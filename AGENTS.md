@@ -24,6 +24,7 @@ feedback. It never ships ROMs.
 | `crates/radmobile-launcher` | The `RadMobile` executable: SDL2 devices and haptics, the bridge loop, the egui menu |
 | `patches/` | Our MAME 0.289 patch (bridge input/output providers, optional EEPROM, true widescreen) |
 | `scripts/build-mame.sh`, `scripts/package.sh` | Builds and release packages |
+| `.github/workflows/` | `CI` (checks) and `Release` (packages; a `vX.Y.Z` tag publishes a release) |
 | `docs/` | Research (Wanszai study, EEPROM map, RAM map), runtime notes |
 
 ## Checks (all must pass before a commit)

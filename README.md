@@ -75,6 +75,18 @@ scripts/package.sh linux             # and/or: windows  → dist/pkg/
 During development `cargo run -p radmobile-launcher` finds MAME in
 `dist/mame-<os>/`.
 
+### Releases
+
+GitHub Actions builds the same packages: `Release` (run it by hand, or
+push a tag `vX.Y.Z` matching the workspace version) builds Linux in a
+Debian bookworm container and Windows with MinGW-w64 in an Arch
+container, and a tag also publishes a GitHub release with the packages
+and `SHA256SUMS.txt`. `CI` runs the checks below on every push.
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
 ### Checks
 
 ```sh

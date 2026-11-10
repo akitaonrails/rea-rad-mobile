@@ -15,6 +15,8 @@ mame="$root/vendor/mame"
 patch="$root/patches/mame-0289-rea-rad-mobile.patch"
 tag=mame0289
 jobs=${JOBS:-$(nproc)}
+# a separate object directory keeps builds for different glibc apart
+builddir=${MAME_BUILDDIR:-build}
 
 die() { echo "build-mame: $*" >&2; exit 1; }
 
@@ -31,7 +33,7 @@ else
 	echo "build-mame: patch applied"
 fi
 
-common="SUBTARGET=radmobile SOURCES=src/mame/sega/segas32.cpp NO_USE_MIDI=1 NO_USE_PORTAUDIO=1 USE_QTDEBUG=0 OPTIMIZE=2 REGENIE=1"
+common="BUILDDIR=$builddir SUBTARGET=radmobile SOURCES=src/mame/sega/segas32.cpp NO_USE_MIDI=1 NO_USE_PORTAUDIO=1 USE_QTDEBUG=0 OPTIMIZE=2 REGENIE=1"
 
 case $target in
 linux)

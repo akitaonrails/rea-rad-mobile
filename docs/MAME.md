@@ -30,4 +30,5 @@ scripts/build-mame.sh linux && scripts/build-mame.sh windows
 |---|---|
 | `scripts/build-mame.sh linux` | `dist/mame-linux/` (this machine's glibc) |
 | `scripts/build-mame.sh windows` | `dist/mame-windows/` (MinGW-w64 in the `gaming` distrobox) |
-| `scripts/build-linux-portable.sh` | `dist/linux-portable/` (Debian bookworm, glibc 2.36, with the launcher and SDL2) |
+| `scripts/build-linux-portable.sh` | `dist/linux-portable/` (Debian bookworm, glibc 2.36, with the launcher and SDL2), by running `scripts/build-linux-release.sh` in Docker |
+| `.github/workflows/release.yml` | Both packages on GitHub Actions (`scripts/build-linux-release.sh` in bookworm; `build-mame.sh windows` + `build-launcher.sh windows` on Arch) |
