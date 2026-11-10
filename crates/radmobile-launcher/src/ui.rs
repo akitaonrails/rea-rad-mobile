@@ -89,6 +89,7 @@ enum Item {
     Volume,
     AttractSound,
     InputDevice,
+    SteerAssist,
     StickDeadzone,
     StickLinearity,
     TriggerDeadzone,
@@ -139,6 +140,7 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
         Screen::Sound => vec![Volume, AttractSound, Back],
         Screen::Controller => vec![
             InputDevice,
+            SteerAssist,
             StickDeadzone,
             StickLinearity,
             TriggerDeadzone,
@@ -174,6 +176,10 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
     }
 }
 
+fn steering_label(assisted: bool) -> String {
+    if assisted { "ASSISTED" } else { "ARCADE" }.into()
+}
+
 fn on_off(b: bool) -> String {
     if b { "ON".into() } else { "OFF".into() }
 }
@@ -195,6 +201,7 @@ fn label(item: Item) -> &'static str {
         Volume => "MASTER VOLUME",
         AttractSound => "ATTRACT MODE SOUND",
         InputDevice => "INPUT DEVICE",
+        SteerAssist => "STICK STEERING",
         StickDeadzone => "STICK DEADZONE",
         StickLinearity => "STICK LINEARITY",
         TriggerDeadzone => "TRIGGER DEADZONE",
@@ -241,6 +248,9 @@ fn help(item: Item) -> &'static str {
         Volume => "Game volume.",
         AttractSound => "Play sound while the game shows its attract demo.",
         InputDevice => "Auto uses a wheel when one is connected, otherwise a gamepad.",
+        SteerAssist => {
+            "Assisted: the stick sets the car's angle and centring drives straight. Arcade: the stick is the cabinet wheel, so you counter-steer."
+        }
         StickDeadzone => "How far the stick moves before the car steers.",
         StickLinearity | TriggerLinearity => {
             "Curve: Linear is direct, Cubic is gentle near the centre."
@@ -646,6 +656,7 @@ impl App {
             Volume => s.volume = step_u8(s.volume, dd, 5, 0, 100),
             AttractSound => s.game.attract_sound = !s.game.attract_sound,
             InputDevice => s.input = cycle(&InputMode::ALL, s.input, dd),
+            SteerAssist => s.pad.steer_assist = !s.pad.steer_assist,
             StickDeadzone => {
                 s.pad.stick_deadzone =
                     (i32::from(s.pad.stick_deadzone) + dd * 500).clamp(0, 16_000) as u16
@@ -733,6 +744,7 @@ impl App {
             Volume => format!("{}%", s.volume),
             AttractSound => on_off(s.game.attract_sound),
             InputDevice => s.input.label().to_uppercase(),
+            SteerAssist => steering_label(s.pad.steer_assist),
             StickDeadzone => format!("{}", s.pad.stick_deadzone),
             StickLinearity => wheel::linearity_label(s.pad.stick_linearity).to_uppercase(),
             TriggerDeadzone => format!("{}", s.pad.trigger_deadzone),

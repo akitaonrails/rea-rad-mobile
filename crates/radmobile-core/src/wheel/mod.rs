@@ -479,6 +479,9 @@ pub struct PadSettings {
     /// Of 255.
     pub trigger_deadzone: u8,
     pub trigger_linearity: u8,
+    /// The stick asks for an angle to the road instead of moving the
+    /// cabinet wheel directly ([`crate::assist`]).
+    pub steer_assist: bool,
 }
 
 impl Default for PadSettings {
@@ -488,6 +491,7 @@ impl Default for PadSettings {
             stick_linearity: 0,
             trigger_deadzone: 12,
             trigger_linearity: 0,
+            steer_assist: true,
         }
     }
 }

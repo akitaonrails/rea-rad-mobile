@@ -18,6 +18,8 @@ What has been verified running, how, and what has not.
 | Menu | `--screenshot` under Xvfb | Main and wheel pages; live input monitor follows the virtual wheel |
 | Windows launcher | Wine: `--check-roms`, `--list-devices`, `--play` | Works; data next to the executable |
 | Windows package | `dist/pkg/…-windows-x86_64.zip` unpacked, `--play` under Wine | Runs at 100 % with the bridge |
+| Stick release (MAME Testers 08052) | Scripted stick eased to full left then released in one frame, old and new MAME | Old: the game keeps steering (heading 42 → 103 after release). New: steering stops at release |
+| Stick steering assist | Launcher `--play` with `scripts/dev/fake-pad.py` (virtual Xbox 360 pad), race telemetry logged by a MAME Lua script | 0.1 s taps move the car about a lane and it runs straight at top speed; ARCADE mode with the same input ends at the barrier with speed collapsing. The first sharp bend still throws a flat-out car wide in both modes |
 | Linux package | `dist/pkg/…-linux-x86_64.tar.gz` (bookworm build, glibc ≥ 2.36) on Arch, with the virtual wheel | Wheel, FFB (1414 force updates in one race), Exit button; menu renders |
 
 ## Not verified yet

@@ -18,14 +18,18 @@
 
 /// Rad Mobile's speed at full throttle on the flat (internal units).
 pub const TOP_SPEED: f32 = 430.0;
-/// Lateral position where the car meets the barriers.
-pub const BARRIER_LATERAL: f32 = 2300.0;
+/// Lateral position where the car meets the barriers (they hold it
+/// between about -600 and 600).
+pub const BARRIER_LATERAL: f32 = 555.0;
 
 /// What MAME reports every frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Telemetry {
     pub speed: f32,
+    /// Across the road; negative is left.
     pub lateral: f32,
+    /// The car's angle to the road; positive points left.
+    pub heading: f32,
     pub playing: bool,
 }
 
@@ -218,6 +222,7 @@ mod tests {
         Some(Telemetry {
             speed,
             lateral: 0.0,
+            heading: 0.0,
             playing: true,
         })
     }
@@ -308,7 +313,8 @@ mod tests {
         };
         let demo = Some(Telemetry {
             speed: TOP_SPEED,
-            lateral: 3000.0,
+            lateral: 600.0,
+            heading: 0.0,
             playing: false,
         });
         let out = run(&mut FfbEngine::new(), 0.5, 1.0, demo, &s);
@@ -358,6 +364,7 @@ mod tests {
             Some(Telemetry {
                 speed: 400.0,
                 lateral: 0.0,
+                heading: 0.0,
                 playing: false,
             }),
             &s,
@@ -375,7 +382,8 @@ mod tests {
         };
         let right_wall = Some(Telemetry {
             speed: 300.0,
-            lateral: 2600.0,
+            lateral: 580.0,
+            heading: 0.0,
             playing: true,
         });
         let out = run(&mut FfbEngine::new(), 0.3, 0.0, right_wall, &s);

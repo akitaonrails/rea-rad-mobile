@@ -1,6 +1,7 @@
 //! Pure logic of the Rad Mobile launcher: everything that can be tested
 //! without a window, a wheel or MAME.
 
+pub mod assist;
 pub mod bridge;
 pub mod controls;
 pub mod eeprom;

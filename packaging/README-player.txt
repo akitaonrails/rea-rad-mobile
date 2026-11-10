@@ -39,6 +39,10 @@ INVERT FFB     If the wheel pushes the wrong way.
 
 Gamepads: left stick steers, right trigger accelerates, left trigger
 brakes, X lights, Y wiper, Start starts, Back inserts a coin.
+STICK STEERING (CONTROLLER page): ASSISTED, the default, makes the stick
+set the car's angle, so letting go drives straight down the road. ARCADE
+makes the stick the cabinet wheel: the car keeps its angle until you
+steer back, as on the real machine. Either way, brake for sharp bends.
 Keyboard: arrows steer, Left Ctrl accelerates, Left Alt brakes,
 Space lights, Left Shift wiper, 1 starts, Esc quits.
 

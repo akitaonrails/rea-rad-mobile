@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use radmobile_core::assist;
 use radmobile_core::bridge::Bridge;
 use radmobile_core::controls::{Button, Cabinet};
 use radmobile_core::ffb::{FfbEngine, FfbOutput, Telemetry};
@@ -293,6 +294,11 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
         }
     });
 
+    let telemetry = poll_telemetry(st, now);
+    // only a pad in charge of the car is assisted, never one beside a wheel
+    let assisted = telemetry
+        .filter(|t| t.playing && st.settings.pad.steer_assist && matches!(active, Active::Pad(_)));
+
     let mut cabinet = Cabinet::default();
     let mut wheel_steer = 0.0;
     if let (Active::Wheel(w), Some(p)) = (active, &profile) {
@@ -311,22 +317,16 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
             Active::None => false,
         };
         if use_pad {
-            cabinet = cabinet.merge(wheel::read_pad(&st.settings.pad, &d.pad_state));
+            let mut pad = wheel::read_pad(&st.settings.pad, &d.pad_state);
+            if let Some(t) = &assisted {
+                pad.steer = assist::steer(pad.steer, t);
+            }
+            cabinet = cabinet.merge(pad);
         }
     }
 
-    // the game
-    let mut telemetry = None;
     if let Some(bridge) = &st.bridge {
         bridge.write(&cabinet.to_frame());
-        let seq = bridge.mame_seq();
-        if seq != st.last_mame_seq {
-            st.last_mame_seq = seq;
-            st.last_mame_change = now;
-        }
-        if now.duration_since(st.last_mame_change) < TELEMETRY_STALE {
-            telemetry = read_telemetry(bridge);
-        }
     }
 
     // force feedback
@@ -409,6 +409,21 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
     }
 }
 
+/// What the game reported for its last frame, while MAME is alive.
+fn poll_telemetry(st: &mut State, now: Instant) -> Option<Telemetry> {
+    let bridge = st.bridge.as_ref()?;
+    let seq = bridge.mame_seq();
+    if seq != st.last_mame_seq {
+        st.last_mame_seq = seq;
+        st.last_mame_change = now;
+    }
+    if now.duration_since(st.last_mame_change) < TELEMETRY_STALE {
+        read_telemetry(bridge)
+    } else {
+        None
+    }
+}
+
 fn read_telemetry(bridge: &Bridge) -> Option<Telemetry> {
     let mut t = Telemetry::default();
     let mut found = false;
@@ -419,6 +434,7 @@ fn read_telemetry(bridge: &Bridge) -> Option<Telemetry> {
                 found = true;
             }
             Some("rea_lateral") => t.lateral = o.value as f32,
+            Some("rea_heading") => t.heading = o.value as f32,
             Some("rea_playing") => t.playing = o.value != 0,
             _ => {}
         }

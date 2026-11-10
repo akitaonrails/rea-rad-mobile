@@ -79,20 +79,22 @@ index fd59bb3d..dfa82270 100644
  	// also disable for the JavaScript port since the startup screens do not run asynchronously
  	show_gameinfo = show_warnings = false;
 diff --git a/src/mame/sega/segas32.cpp b/src/mame/sega/segas32.cpp
-index 472ca534..f2df95c7 100644
+index 472ca534..c7195d4d 100644
 --- a/src/mame/sega/segas32.cpp
 +++ b/src/mame/sega/segas32.cpp
-@@ -609,6 +609,9 @@ segas32_state::segas32_state(const machine_config &mconfig, device_type type, co
+@@ -609,6 +609,11 @@ segas32_state::segas32_state(const machine_config &mconfig, device_type type, co
  	, m_output_right_lamp(*this, "Right_lamp")
  	, m_output_right_winner_lamp(*this, "Right_Winner_lamp")
  	, m_output_wiper_lamp(*this, "Wiper_lamp")
 +	, m_rea_speed(*this, "rea_speed")
 +	, m_rea_lateral(*this, "rea_lateral")
 +	, m_rea_playing(*this, "rea_playing")
++	, m_rea_heading(*this, "rea_heading")
++	, m_rea_analog1(*this, "ANALOG1")
  {
  	std::fill(std::begin(m_v60_irq_control), std::end(m_v60_irq_control), 0);
  	std::fill(std::begin(m_v60_irq_timer), std::end(m_v60_irq_timer), nullptr);
-@@ -2286,7 +2289,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
+@@ -2286,7 +2291,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
  
  	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
  	m_screen->set_refresh_hz(60);
@@ -101,7 +103,16 @@ index 472ca534..f2df95c7 100644
  	m_screen->set_visarea(0*8, 52*8-1, 0*8, 28*8-1);
  	m_screen->set_screen_update(FUNC(segas32_state::screen_update_system32));
  
-@@ -4555,8 +4558,8 @@ ROM_START( radm )
+@@ -2333,7 +2338,7 @@ void segas32_analog_state::device_add_mconfig(machine_config &config)
+ 	m_maincpu->set_addrmap(AS_PROGRAM, &segas32_analog_state::system32_analog_map);
+ 
+ 	msm6253_device &adc(MSM6253(config, "adc"));
+-	adc.set_input_tag<0>("ANALOG1");
++	adc.set_input_cb<0>(FUNC(segas32_analog_state::rea_analog1_r)); // rea-rad-mobile
+ 	adc.set_input_tag<1>("ANALOG2");
+ 	adc.set_input_tag<2>("ANALOG3");
+ 	adc.set_input_tag<3>("ANALOG4");
+@@ -4555,8 +4560,8 @@ ROM_START( radm )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused (cabinet motor?) */
  	ROM_LOAD( "epr-13686.bin", 0x00000, 0x8000, CRC(317a2857) SHA1(e0788dc7a7d214d9c4d26b24e44c1a0dc9ae477c) ) /* cabinet movement */
  
@@ -112,7 +123,7 @@ index 472ca534..f2df95c7 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4594,8 +4597,8 @@ ROM_START( radmu )
+@@ -4594,8 +4599,8 @@ ROM_START( radmu )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused (cabinet motor?) */
  	ROM_LOAD( "epr-13686.bin", 0x00000, 0x8000, CRC(317a2857) SHA1(e0788dc7a7d214d9c4d26b24e44c1a0dc9ae477c) ) /* cabinet movement */
  
@@ -123,7 +134,7 @@ index 472ca534..f2df95c7 100644
  ROM_END
  
  
-@@ -4642,8 +4645,8 @@ ROM_START( radr )
+@@ -4642,8 +4647,8 @@ ROM_START( radr )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -134,7 +145,7 @@ index 472ca534..f2df95c7 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4687,8 +4690,8 @@ ROM_START( radru )
+@@ -4687,8 +4692,8 @@ ROM_START( radru )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -145,7 +156,7 @@ index 472ca534..f2df95c7 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4732,8 +4735,8 @@ ROM_START( radrj )
+@@ -4732,8 +4737,8 @@ ROM_START( radrj )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -156,11 +167,24 @@ index 472ca534..f2df95c7 100644
  ROM_END
  
  
-@@ -5938,6 +5941,16 @@ void segas32_state::init_radm()
+@@ -5938,6 +5943,30 @@ void segas32_state::init_radm()
  	segas32_common_init();
  	m_sw1_output = &segas32_state::radm_sw1_output;
  	m_sw2_output = &segas32_state::radm_sw2_output;
 +	m_rea_telemetry = true; // rea-rad-mobile
++	m_rea_steer_limit = true;
++	save_item(NAME(m_rea_steer));
++}
++
++// rea-rad-mobile: steering for the ADC, rate-limited for Rad Mobile
++ioport_value segas32_state::rea_analog1_r()
++{
++	int const target = m_rea_analog1.read_safe(0xff) & 0xff;
++	if (!m_rea_steer_limit)
++		return target;
++	int const step = std::clamp(target - int(m_rea_steer), -REA_STEER_STEP, REA_STEER_STEP);
++	m_rea_steer = uint8_t(m_rea_steer + step);
++	return m_rea_steer;
 +}
 +
 +// rea-rad-mobile: work RAM is little-endian 16-bit words from 0x200000
@@ -168,13 +192,14 @@ index 472ca534..f2df95c7 100644
 +{
 +	uint16_t const *const ram = &m_system32_workram[0];
 +	m_rea_speed = ram[0x1f44 / 2];                       // 0..~430
-+	m_rea_lateral = int16_t(ram[0x7f44 / 2]);            // negative is left
++	m_rea_lateral = int16_t(ram[0x1f46 / 2]);            // negative is left, barriers near +-560
++	m_rea_heading = int16_t(ram[0x1f30 / 2]);            // angle to the road, positive points left
 +	m_rea_playing = (ram[0x18ae / 2] >> 8) != 0 ? 1 : 0; // byte 0x2018af
  }
  
  
 diff --git a/src/mame/sega/segas32.h b/src/mame/sega/segas32.h
-index aecffe45..eb7b24d8 100644
+index aecffe45..575b64dc 100644
 --- a/src/mame/sega/segas32.h
 +++ b/src/mame/sega/segas32.h
 @@ -263,6 +263,16 @@ protected:
@@ -194,7 +219,7 @@ index aecffe45..eb7b24d8 100644
  	uint8_t m_sprite_control[8]{};
  	std::unique_ptr<uint32_t[]> m_spriteram_32bit;
  	std::unique_ptr<int32_t[]> m_prev_bgstartx;
-@@ -301,6 +311,14 @@ protected:
+@@ -301,6 +311,27 @@ protected:
  	output_finder<> m_output_right_lamp;
  	output_finder<> m_output_right_winner_lamp;
  	output_finder<> m_output_wiper_lamp;
@@ -205,7 +230,20 @@ index aecffe45..eb7b24d8 100644
 +	output_finder<> m_rea_speed;
 +	output_finder<> m_rea_lateral;
 +	output_finder<> m_rea_playing;
++	output_finder<> m_rea_heading;
 +	void rea_update_telemetry();
++
++	// rea-rad-mobile: Rad Mobile drops any steering sample more than 0x40
++	// away from the last one it accepted and keeps the old value (code at
++	// 0x70333; MAME Testers 08052). A stick released from full lock jumps
++	// back to centre in one frame, so the game keeps steering. The steering
++	// sent to the ADC moves toward the control at most this much per sample,
++	// as fast as a real wheel can turn.
++	static constexpr int REA_STEER_STEP = 0x30;
++	bool m_rea_steer_limit = false;
++	uint8_t m_rea_steer = 0x80;
++	optional_ioport m_rea_analog1;
++	ioport_value rea_analog1_r();
  };
  
  class segas32_regular_state : public segas32_state

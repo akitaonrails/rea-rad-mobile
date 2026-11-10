@@ -295,6 +295,7 @@ impl Settings {
                     as u8,
                 trigger_linearity: num("trigger_linearity", d.pad.trigger_linearity.into(), 0, 100)
                     as u8,
+                steer_assist: flag("steer_assist", d.pad.steer_assist),
             },
             ffb: FfbSettings {
                 strength: num("ffb_strength", d.ffb.strength.into(), 0, 100) as u8,
@@ -361,6 +362,7 @@ impl Settings {
         ini.set("stick_linearity", &self.pad.stick_linearity.to_string());
         ini.set("trigger_deadzone", &self.pad.trigger_deadzone.to_string());
         ini.set("trigger_linearity", &self.pad.trigger_linearity.to_string());
+        ini.set("steer_assist", b(self.pad.steer_assist));
         ini.set("ffb_strength", &self.ffb.strength.to_string());
         ini.set("ffb_invert", b(self.ffb.invert));
         ini.set("rumble_strength", &self.ffb.rumble.to_string());
@@ -417,6 +419,7 @@ mod tests {
             },
             pad: PadSettings {
                 stick_linearity: 40,
+                steer_assist: false,
                 ..Default::default()
             },
             ffb: FfbSettings {
