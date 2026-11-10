@@ -465,6 +465,10 @@ pub struct PadState {
     pub right_shoulder: bool,
     pub dpad_left: bool,
     pub dpad_right: bool,
+    /// For menu navigation only.
+    pub dpad_up: bool,
+    pub dpad_down: bool,
+    pub left_y: i16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

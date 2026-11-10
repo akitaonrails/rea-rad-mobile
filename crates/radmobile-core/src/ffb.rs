@@ -78,6 +78,10 @@ const SCRAPE_BUZZ: f32 = 0.2;
 const SCRAPE_HZ: f32 = 14.0;
 /// Speed is smoothed over this time before the hit test.
 const SPEED_WINDOW_SEC: f32 = 0.05;
+/// Jolts stay off for the first second of a race: the speed jumps from
+/// the attract demo's to zero when a game starts (Ridge Racer Collection
+/// waits 60 frames the same way).
+const JOLT_ARM_SEC: f32 = 1.0;
 
 #[derive(Debug, Clone, Default)]
 pub struct FfbEngine {
@@ -86,6 +90,7 @@ pub struct FfbEngine {
     jolt: f32,
     jolt_left: f32,
     phase: f32,
+    racing_for: f32,
 }
 
 impl FfbEngine {
@@ -158,8 +163,10 @@ impl FfbEngine {
     fn detect_hit(&mut self, dt: f32, steer: f32, racing: Option<Telemetry>) {
         let Some(t) = racing else {
             self.smoothed_speed = None;
+            self.racing_for = 0.0;
             return;
         };
+        self.racing_for += dt;
         let prev = self.smoothed_speed.unwrap_or(t.speed);
         let alpha = if dt > 0.0 {
             (dt / SPEED_WINDOW_SEC).min(1.0)
@@ -168,7 +175,7 @@ impl FfbEngine {
         };
         let now = prev + (t.speed - prev) * alpha;
         self.smoothed_speed = Some(now);
-        if dt <= 0.0 || self.jolt_left > 0.0 {
+        if dt <= 0.0 || self.jolt_left > 0.0 || self.racing_for < JOLT_ARM_SEC {
             return;
         }
         let decel = (prev - now) / dt;
@@ -334,6 +341,30 @@ mod tests {
             jolted |= out.rumble > 0.5 && out.constant < -0.4;
         }
         assert!(jolted, "the hit throws the wheel against the turn");
+    }
+
+    #[test]
+    fn a_new_race_does_not_jolt() {
+        let s = FfbSettings {
+            strength: 100,
+            ..Default::default()
+        };
+        let mut e = FfbEngine::new();
+        // the attract demo drives fast, then a player's race starts from zero
+        run(
+            &mut e,
+            1.0,
+            0.0,
+            Some(Telemetry {
+                speed: 400.0,
+                lateral: 0.0,
+                playing: false,
+            }),
+            &s,
+        );
+        let out = run(&mut e, 0.5, 0.0, racing(0.0), &s);
+        assert_eq!(out.rumble, 0.0);
+        assert!(out.constant.abs() < 0.01);
     }
 
     #[test]

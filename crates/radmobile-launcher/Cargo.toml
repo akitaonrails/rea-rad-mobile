@@ -6,3 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow = "1.0.104"
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
+png = "0.18.1"
+radmobile-core = { version = "0.1.0", path = "../radmobile-core" }
+sdl2 = "0.38.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
