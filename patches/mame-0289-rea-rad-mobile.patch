@@ -26,6 +26,18 @@ index 97022e9f..79e30700 100644
  		MAME_DIR .. "src/osd/modules/output/win32_output.cpp",
  		MAME_DIR .. "src/osd/modules/output/win32_output.h",
  		MAME_DIR .. "src/osd/modules/render/blit13.ipp",
+diff --git a/scripts/src/osd/windows.lua b/scripts/src/osd/windows.lua
+index 13f2b83f..611bc36f 100644
+--- a/scripts/src/osd/windows.lua
++++ b/scripts/src/osd/windows.lua
+@@ -47,6 +47,7 @@ function maintargetosdoptions(_target,_subtarget)
+ 		"shcore",
+ 		"shlwapi",
+ 		"uuid",
++		"ksuser", -- rea-rad-mobile: KSDATAFORMAT_SUBTYPE_PCM for MinGW
+ 	}
+ end
+ 
 diff --git a/src/mame/sega/segas32.cpp b/src/mame/sega/segas32.cpp
 index 472ca534..228c438a 100644
 --- a/src/mame/sega/segas32.cpp
@@ -712,3 +724,34 @@ index 00000000..1ed72d63
 +} // namespace osd
 +
 +MODULE_DEFINITION(OUTPUT_REABRIDGE, osd::output_reabridge)
+diff --git a/src/osd/modules/sound/mmdevice_helpers.cpp b/src/osd/modules/sound/mmdevice_helpers.cpp
+index 6f4bd043..b7ea6338 100644
+--- a/src/osd/modules/sound/mmdevice_helpers.cpp
++++ b/src/osd/modules/sound/mmdevice_helpers.cpp
+@@ -14,6 +14,12 @@
+ #include <utility>
+ #include <vector>
+ 
++#if defined(__MINGW32__)
++// rea-rad-mobile: MinGW ships no library defining the audio property keys;
++// define them here (selectany, so no clash with libuuid)
++#include <initguid.h>
++#endif
++
+ #include <combaseapi.h>
+ #include <oleauto.h>
+ 
+@@ -21,6 +27,13 @@
+ 
+ #include <functiondiscoverykeys_devpkey.h>
+ 
++#if defined(__MINGW32__)
++// rea-rad-mobile: mmdeviceapi.h was included before initguid.h, so define
++// these keys explicitly (value from the Windows SDK)
++extern "C" const PROPERTYKEY DECLSPEC_SELECTANY PKEY_AudioEngine_DeviceFormat = { { 0xf19f064d, 0x082c, 0x4e27, { 0xbc, 0x73, 0x68, 0x82, 0xa1, 0xbb, 0x8e, 0x4c } }, 0 };
++extern "C" const PROPERTYKEY DECLSPEC_SELECTANY PKEY_AudioEndpoint_PhysicalSpeakers = { { 0x1da5d803, 0xd492, 0x4edd, { 0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e } }, 3 };
++#endif
++
+ 
+ namespace osd {
+ 
