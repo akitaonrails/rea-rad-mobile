@@ -1850,10 +1850,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "eframe",
+ "libc",
  "png",
  "radmobile-core",
  "sdl2",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

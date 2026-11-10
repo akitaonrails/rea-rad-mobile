@@ -38,6 +38,46 @@ index 13f2b83f..611bc36f 100644
  	}
  end
  
+diff --git a/src/emu/romload.cpp b/src/emu/romload.cpp
+index 476dc8f1..2153a33a 100644
+--- a/src/emu/romload.cpp
++++ b/src/emu/romload.cpp
+@@ -550,9 +550,12 @@ void rom_load_manager::handle_missing_file(const rom_entry *romp, const std::vec
+ 	if (ROM_ISOPTIONAL(romp))
+ 	{
+ 		// optional files are okay
+-		if (!is_chd_error)
+-			m_errorstring.append(string_format("OPTIONAL %s NOT FOUND%s\n", name, tried));
+-		m_warnings++;
++		// rea-rad-mobile: and not worth the warning screen that holds the
++		// machine until a key is pressed (the factory EEPROM most sets lack)
++		if (is_chd_error)
++			m_warnings++;
++		else
++			osd_printf_verbose("OPTIONAL %s NOT FOUND%s\n", name, tried);
+ 	}
+ 	else if (util::hash_collection(romp->hashdata()).flag(util::hash_collection::FLAG_NO_DUMP))
+ 	{
+diff --git a/src/frontend/mame/ui/ui.cpp b/src/frontend/mame/ui/ui.cpp
+index fd59bb3d..dfa82270 100644
+--- a/src/frontend/mame/ui/ui.cpp
++++ b/src/frontend/mame/ui/ui.cpp
+@@ -664,6 +664,15 @@ void mame_ui_manager::display_startup_screens(bool first_time)
+ 	if (!first_time || (str > 0 && str < 60*5) || &machine().system() == &GAME_NAME(___empty) || (machine().debug_flags & DEBUG_FLAG_ENABLED) || video_none)
+ 		show_gameinfo = show_warnings = false;
+ 
++	// rea-rad-mobile: the launcher is the front end; it never wants a modal
++	// box waiting for a key before the game (the warnings go to the log)
++	if (std::getenv("REA_SKIP_STARTUP_SCREENS"))
++	{
++		if (first_time && machine_info().has_warnings())
++			osd_printf_verbose("%s\n", machine_info().warnings_string());
++		show_gameinfo = show_warnings = false;
++	}
++
+ #if defined(__EMSCRIPTEN__)
+ 	// also disable for the JavaScript port since the startup screens do not run asynchronously
+ 	show_gameinfo = show_warnings = false;
 diff --git a/src/mame/sega/segas32.cpp b/src/mame/sega/segas32.cpp
 index 472ca534..f2df95c7 100644
 --- a/src/mame/sega/segas32.cpp

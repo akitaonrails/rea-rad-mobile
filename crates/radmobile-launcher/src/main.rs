@@ -3,6 +3,7 @@
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod child;
 mod input;
 mod log;
 mod paths;

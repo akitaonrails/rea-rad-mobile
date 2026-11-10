@@ -171,7 +171,7 @@ pub fn launch(p: &Prepared) -> io::Result<Child> {
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log);
-    cmd.spawn()
+    crate::child::spawn(&mut cmd)
 }
 
 #[cfg(test)]

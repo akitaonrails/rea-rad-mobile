@@ -93,7 +93,15 @@ pub fn args(s: &Settings, set: &str, paths: &Paths, screen: Option<Screen>) -> V
     opt("nvram_directory", path(&paths.nvram()));
     opt("ctrlrpath", path(&paths.ctrlr()));
     opt("ctrlr", "rea".into());
-    opt("artpath", path(&paths.artwork()));
+    // ours (the widescreen layout), then MAME's (the CRT shaders' textures)
+    opt(
+        "artpath",
+        format!(
+            "{};{}",
+            path(&paths.artwork()),
+            path(&paths.mame_dir.join("artwork"))
+        ),
+    );
     opt("snapshot_directory", path(&paths.snaps()));
     opt("bgfx_path", path(&paths.mame_dir.join("bgfx")));
     opt("joystickprovider", "reabridge".into());
@@ -172,6 +180,8 @@ pub fn env(s: &Settings, paths: &Paths) -> Vec<(String, String)> {
     vec![
         ("REA_BRIDGE".into(), path(&paths.bridge)),
         ("REA_S32_WIDE_MARGIN".into(), margin.to_string()),
+        // no MAME warning box waiting for a key before the game
+        ("REA_SKIP_STARTUP_SCREENS".into(), "1".into()),
     ]
 }
 
@@ -224,6 +234,10 @@ mod tests {
         assert_eq!(value(&a, "-output"), Some("reabridge"));
         assert_eq!(value(&a, "-ctrlr"), Some("rea"));
         assert_eq!(value(&a, "-rompath"), Some("/data/roms"));
+        assert_eq!(
+            value(&a, "-artpath"),
+            Some("/data/artwork;/opt/rm/mame/artwork")
+        );
         assert_eq!(value(&a, "-bgfx_screen_chains"), Some("default"));
         assert!(a.contains(&"-nowindow".to_string()));
         assert!(a.contains(&"-noreadconfig".to_string()));

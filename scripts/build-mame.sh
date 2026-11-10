@@ -67,4 +67,8 @@ esac
 rm -rf "$out/bgfx"
 mkdir -p "$out/bgfx"
 cp -r "$mame/bgfx/chains" "$mame/bgfx/effects" "$mame/bgfx/shaders" "$out/bgfx/"
+# textures the CRT chains load through the artwork path
+rm -rf "$out/artwork"
+mkdir -p "$out/artwork"
+cp -r "$mame/artwork/bgfx" "$out/artwork/"
 echo "build-mame: $out"

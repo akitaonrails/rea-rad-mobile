@@ -18,6 +18,8 @@ impl Sdl {
             // wheels report through HID; keep SDL's HIDAPI drivers for pads only
             ("SDL_JOYSTICK_HIDAPI_WHEELS", "0"),
             ("SDL_JOYSTICK_RAWINPUT", "0"),
+            // SDL would otherwise swallow SIGINT/SIGTERM as a quit event
+            ("SDL_NO_SIGNAL_HANDLERS", "1"),
         ];
         for (k, v) in hints {
             let (k, v) = (CString::new(k)?, CString::new(v)?);
