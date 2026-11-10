@@ -10,7 +10,7 @@ use eframe::egui::{
 };
 use radmobile_core::controls::Button;
 use radmobile_core::ini::Ini;
-use radmobile_core::settings::{InputMode, Settings};
+use radmobile_core::settings::{self as cfg, InputMode, Settings};
 use radmobile_core::wheel::wizard::{self, Status, Wizard};
 use radmobile_core::wheel::{self, Binding, DeviceId, Source, WheelProfile};
 
@@ -130,7 +130,7 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
         ],
         Screen::Video => {
             let mut v = vec![Display, Resolution, Aspect];
-            if s.aspect != radmobile_core::settings::Aspect::Original {
+            if s.aspect != cfg::Aspect::Original {
                 v.push(WideTarget);
             }
             v.extend([Filter, Vsync, Brightness, Back]);
@@ -628,27 +628,19 @@ impl App {
                 self.back(ctx);
             }
             Display => {
-                s.display = if s.display == radmobile_core::settings::Display::Fullscreen {
-                    radmobile_core::settings::Display::Window
+                s.display = if s.display == cfg::Display::Fullscreen {
+                    cfg::Display::Window
                 } else {
-                    radmobile_core::settings::Display::Fullscreen
+                    cfg::Display::Fullscreen
                 };
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(
-                    s.display == radmobile_core::settings::Display::Fullscreen,
+                    s.display == cfg::Display::Fullscreen,
                 ));
             }
-            Resolution => {
-                s.resolution = cycle(&radmobile_core::settings::Resolution::ALL, s.resolution, dd)
-            }
-            Aspect => s.aspect = cycle(&radmobile_core::settings::Aspect::ALL, s.aspect, dd),
-            WideTarget => {
-                s.wide_target = cycle(
-                    &radmobile_core::settings::WideTarget::ALL,
-                    s.wide_target,
-                    dd,
-                )
-            }
-            Filter => s.filter = cycle(&radmobile_core::settings::Filter::ALL, s.filter, dd),
+            Resolution => s.resolution = cycle(&cfg::Resolution::ALL, s.resolution, dd),
+            Aspect => s.aspect = cycle(&cfg::Aspect::ALL, s.aspect, dd),
+            WideTarget => s.wide_target = cycle(&cfg::WideTarget::ALL, s.wide_target, dd),
+            Filter => s.filter = cycle(&cfg::Filter::ALL, s.filter, dd),
             Vsync => s.vsync = !s.vsync,
             Brightness => s.brightness = step_u8(s.brightness, dd, 5, 50, 150),
             Volume => s.volume = step_u8(s.volume, dd, 5, 0, 100),
@@ -729,8 +721,8 @@ impl App {
         let s = &self.settings;
         Some(match item {
             Display => match s.display {
-                radmobile_core::settings::Display::Fullscreen => "FULLSCREEN".into(),
-                radmobile_core::settings::Display::Window => "WINDOW".into(),
+                cfg::Display::Fullscreen => "FULLSCREEN".into(),
+                cfg::Display::Window => "WINDOW".into(),
             },
             Resolution => s.resolution.label().to_uppercase(),
             Aspect => s.aspect.label().to_uppercase(),
@@ -1445,4 +1437,64 @@ pub fn load(paths: &AppPaths) -> (Settings, Option<WheelProfile>) {
         .ok()
         .and_then(|t| WheelProfile::from_ini(&Ini::parse(&t)));
     (settings, profile)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_menu_ends_with_back_or_quit() {
+        let s = Settings::default();
+        for screen in [
+            Screen::Main,
+            Screen::Settings,
+            Screen::Video,
+            Screen::Sound,
+            Screen::Controller,
+            Screen::Wheel,
+            Screen::Game,
+            Screen::Roms,
+        ] {
+            let list = items(screen, &s);
+            assert!(
+                matches!(list.last(), Some(Item::Back | Item::Quit)),
+                "{screen:?}"
+            );
+            for item in list {
+                assert!(!label(item).is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn screen_shape_only_shows_for_wide_pictures() {
+        let mut s = Settings::default();
+        assert!(!items(Screen::Video, &s).contains(&Item::WideTarget));
+        s.aspect = cfg::Aspect::TrueWidescreen;
+        assert!(items(Screen::Video, &s).contains(&Item::WideTarget));
+    }
+
+    #[test]
+    fn values_cycle_and_clamp() {
+        assert_eq!(
+            cycle(&cfg::Filter::ALL, cfg::Filter::CrtDeluxe, 1),
+            cfg::Filter::Sharp
+        );
+        assert_eq!(
+            cycle(&cfg::Filter::ALL, cfg::Filter::Sharp, -1),
+            cfg::Filter::CrtDeluxe
+        );
+        assert_eq!(step_u8(100, 1, 25, 0, 100), 100);
+        assert_eq!(step_u8(0, -1, 25, 0, 100), 0);
+        assert_eq!(step_u8(50, 1, 25, 0, 100), 75);
+    }
+
+    #[test]
+    fn screen_names_for_screenshots() {
+        assert_eq!(screen_by_name("wheel"), Screen::Wheel);
+        assert_eq!(screen_by_name("nonsense"), Screen::Main);
+        assert_eq!(Screen::Wizard.parent(), Some(Screen::Wheel));
+        assert_eq!(Screen::Video.parent(), Some(Screen::Settings));
+    }
 }
