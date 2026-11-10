@@ -112,7 +112,7 @@ The patch caps the margin at 96 (512 pixels, about 2.13:1).
 ## Force feedback
 
 The arcade had no steering motor, so FFB is synthetic, as in Wanszai's
-Ridge Racer 1/2: a MAME Lua plugin reads the car's state from work RAM and
+Ridge Racer 1/2: our MAME patch reads the car's state from work RAM and
 publishes it as outputs; the launcher turns it into spring, damper,
 constant force and rumble. RAM map: [RAM_MAP.md](RAM_MAP.md).
 

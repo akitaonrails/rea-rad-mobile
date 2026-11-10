@@ -39,10 +39,20 @@ index 13f2b83f..611bc36f 100644
  end
  
 diff --git a/src/mame/sega/segas32.cpp b/src/mame/sega/segas32.cpp
-index 472ca534..228c438a 100644
+index 472ca534..f2df95c7 100644
 --- a/src/mame/sega/segas32.cpp
 +++ b/src/mame/sega/segas32.cpp
-@@ -2286,7 +2286,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
+@@ -609,6 +609,9 @@ segas32_state::segas32_state(const machine_config &mconfig, device_type type, co
+ 	, m_output_right_lamp(*this, "Right_lamp")
+ 	, m_output_right_winner_lamp(*this, "Right_Winner_lamp")
+ 	, m_output_wiper_lamp(*this, "Wiper_lamp")
++	, m_rea_speed(*this, "rea_speed")
++	, m_rea_lateral(*this, "rea_lateral")
++	, m_rea_playing(*this, "rea_playing")
+ {
+ 	std::fill(std::begin(m_v60_irq_control), std::end(m_v60_irq_control), 0);
+ 	std::fill(std::begin(m_v60_irq_timer), std::end(m_v60_irq_timer), nullptr);
+@@ -2286,7 +2289,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
  
  	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
  	m_screen->set_refresh_hz(60);
@@ -51,7 +61,7 @@ index 472ca534..228c438a 100644
  	m_screen->set_visarea(0*8, 52*8-1, 0*8, 28*8-1);
  	m_screen->set_screen_update(FUNC(segas32_state::screen_update_system32));
  
-@@ -4555,8 +4555,8 @@ ROM_START( radm )
+@@ -4555,8 +4558,8 @@ ROM_START( radm )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused (cabinet motor?) */
  	ROM_LOAD( "epr-13686.bin", 0x00000, 0x8000, CRC(317a2857) SHA1(e0788dc7a7d214d9c4d26b24e44c1a0dc9ae477c) ) /* cabinet movement */
  
@@ -62,7 +72,7 @@ index 472ca534..228c438a 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4594,8 +4594,8 @@ ROM_START( radmu )
+@@ -4594,8 +4597,8 @@ ROM_START( radmu )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused (cabinet motor?) */
  	ROM_LOAD( "epr-13686.bin", 0x00000, 0x8000, CRC(317a2857) SHA1(e0788dc7a7d214d9c4d26b24e44c1a0dc9ae477c) ) /* cabinet movement */
  
@@ -73,7 +83,7 @@ index 472ca534..228c438a 100644
  ROM_END
  
  
-@@ -4642,8 +4642,8 @@ ROM_START( radr )
+@@ -4642,8 +4645,8 @@ ROM_START( radr )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -84,7 +94,7 @@ index 472ca534..228c438a 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4687,8 +4687,8 @@ ROM_START( radru )
+@@ -4687,8 +4690,8 @@ ROM_START( radru )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -95,7 +105,7 @@ index 472ca534..228c438a 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4732,8 +4732,8 @@ ROM_START( radrj )
+@@ -4732,8 +4735,8 @@ ROM_START( radrj )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -104,10 +114,27 @@ index 472ca534..228c438a 100644
 +	ROM_REGION16_BE( 0x80, "mainpcb:eeprom", ROMREGION_ERASEFF ) /* rea-rad-mobile: older dumps lack this; a blank chip is fine */
 +	ROM_LOAD_OPTIONAL( "eeprom-radr.ic76", 0x0000, 0x0080, CRC(602032c6) SHA1(fecf14017e537fe870457d2a8d4f86ec6d442b90) )
  ROM_END
+ 
+ 
+@@ -5938,6 +5941,16 @@ void segas32_state::init_radm()
+ 	segas32_common_init();
+ 	m_sw1_output = &segas32_state::radm_sw1_output;
+ 	m_sw2_output = &segas32_state::radm_sw2_output;
++	m_rea_telemetry = true; // rea-rad-mobile
++}
++
++// rea-rad-mobile: work RAM is little-endian 16-bit words from 0x200000
++void segas32_state::rea_update_telemetry()
++{
++	uint16_t const *const ram = &m_system32_workram[0];
++	m_rea_speed = ram[0x1f44 / 2];                       // 0..~430
++	m_rea_lateral = int16_t(ram[0x7f44 / 2]);            // negative is left
++	m_rea_playing = (ram[0x18ae / 2] >> 8) != 0 ? 1 : 0; // byte 0x2018af
+ }
  
  
 diff --git a/src/mame/sega/segas32.h b/src/mame/sega/segas32.h
-index aecffe45..70cb1660 100644
+index aecffe45..eb7b24d8 100644
 --- a/src/mame/sega/segas32.h
 +++ b/src/mame/sega/segas32.h
 @@ -263,6 +263,16 @@ protected:
@@ -127,8 +154,23 @@ index aecffe45..70cb1660 100644
  	uint8_t m_sprite_control[8]{};
  	std::unique_ptr<uint32_t[]> m_spriteram_32bit;
  	std::unique_ptr<int32_t[]> m_prev_bgstartx;
+@@ -301,6 +311,14 @@ protected:
+ 	output_finder<> m_output_right_lamp;
+ 	output_finder<> m_output_right_winner_lamp;
+ 	output_finder<> m_output_wiper_lamp;
++
++	// rea-rad-mobile: Rad Mobile telemetry for the launcher's synthetic force
++	// feedback, read from work RAM at every vblank (docs/RAM_MAP.md)
++	bool m_rea_telemetry = false;
++	output_finder<> m_rea_speed;
++	output_finder<> m_rea_lateral;
++	output_finder<> m_rea_playing;
++	void rea_update_telemetry();
+ };
+ 
+ class segas32_regular_state : public segas32_state
 diff --git a/src/mame/sega/segas32_v.cpp b/src/mame/sega/segas32_v.cpp
-index af146b6d..b2092182 100644
+index af146b6d..d5a8307a 100644
 --- a/src/mame/sega/segas32_v.cpp
 +++ b/src/mame/sega/segas32_v.cpp
 @@ -237,6 +237,14 @@ void segas32_state::device_start()
@@ -155,7 +197,16 @@ index af146b6d..b2092182 100644
  		m_layer_data[bmap].transparent = make_unique_clear<uint8_t[]>(256);
  		m_layer_data[bmap].num = bmap;
  
-@@ -587,9 +595,9 @@ bool segas32_state::compute_clipping_extents(screen_device &screen, bool enable,
+@@ -345,6 +353,8 @@ void segas32_state::system32_set_vblank(int state)
+ 	/* at the end of VBLANK is when automatic sprite rendering happens */
+ 	if (!state)
+ 		m_update_sprites_timer->adjust(attotime::from_usec(50), 1);
++	else if (m_rea_telemetry)
++		rea_update_telemetry(); // rea-rad-mobile
+ }
+ 
+ 
+@@ -587,9 +597,9 @@ bool segas32_state::compute_clipping_extents(screen_device &screen, bool enable,
  	{
  		if (!flip)
  		{
@@ -167,7 +218,7 @@ index af146b6d..b2092182 100644
  			clips[i].max_y = (m_videoram[0x1ff66/2 + i * 4] & 0x0ff) + 1;
  		}
  		else
-@@ -763,6 +771,9 @@ void segas32_state::update_tilemap_zoom(screen_device &screen, segas32_state::la
+@@ -763,6 +773,9 @@ void segas32_state::update_tilemap_zoom(screen_device &screen, segas32_state::la
  
  	/* finally, account for destination top,left coordinates */
  	srcx_start += cliprect.min_x * srcxstep;
@@ -177,7 +228,7 @@ index af146b6d..b2092182 100644
  	srcy += cliprect.min_y * srcystep;
  
  	/* if we're flipped, simply adjust the start/step parameters */
-@@ -896,7 +907,7 @@ void segas32_state::update_tilemap_rowscroll(screen_device &screen, segas32_stat
+@@ -896,7 +909,7 @@ void segas32_state::update_tilemap_rowscroll(screen_device &screen, segas32_stat
  	uint16_t const *const table = &m_videoram[(m_videoram[0x1ff04/2] >> 10) * 0x400];
  
  	/* start with screen-wide X and Y scrolls */
@@ -186,7 +237,7 @@ index af146b6d..b2092182 100644
  	const int yscroll = (m_videoram[0x1ff16/2 + 4 * bgnum] & 0x1ff);
  
  	/* render the tilemap into its bitmap */
-@@ -1014,7 +1025,18 @@ void segas32_state::update_tilemap_text(screen_device &screen, segas32_state::la
+@@ -1014,7 +1027,18 @@ void segas32_state::update_tilemap_text(screen_device &screen, segas32_state::la
  	const bool flip = BIT(m_videoram[0x1ff00 / 2], 9);
  	m_text_tilemap->set_flip(flip ? (TILEMAP_FLIPX | TILEMAP_FLIPY) : 0);
  
@@ -206,7 +257,7 @@ index af146b6d..b2092182 100644
  }
  
  
-@@ -1040,7 +1062,7 @@ void segas32_state::update_bitmap(screen_device &screen, segas32_state::layer_in
+@@ -1040,7 +1064,7 @@ void segas32_state::update_bitmap(screen_device &screen, segas32_state::layer_in
  	const bool clipdraw_start = compute_clipping_extents(screen, clipenable, clipout, clips, cliprect, &clip_extents);
  
  	/* determine x/y scroll */
@@ -215,7 +266,7 @@ index af146b6d..b2092182 100644
  	const int yscroll = m_videoram[0x1ff8a/2] & 0x1ff;
  	const int color = (m_videoram[0x1ff8c/2] << 4) & 0x1fff0 & ~((1 << bpp) - 1);
  
-@@ -1532,9 +1554,13 @@ void segas32_state::sprite_render_list()
+@@ -1532,9 +1556,13 @@ void segas32_state::sprite_render_list()
  
  	/* compute the outer clip */
  	outerclip.min_x = outerclip.min_y = 0;
@@ -230,7 +281,7 @@ index af146b6d..b2092182 100644
  	/* initialize the cliprects */
  	clipin = outerclip;
  	clipout.min_x = clipout.min_y = 0;
-@@ -1562,6 +1588,11 @@ void segas32_state::sprite_render_list()
+@@ -1562,6 +1590,11 @@ void segas32_state::sprite_render_list()
  					clipin.max_y = util::sext(sprite[1], 12);
  					clipin.min_x = util::sext(sprite[2], 12);
  					clipin.max_x = util::sext(sprite[3], 12);
@@ -242,7 +293,7 @@ index af146b6d..b2092182 100644
  					clipin &= outerclip;
  				}
  
-@@ -1570,8 +1601,8 @@ void segas32_state::sprite_render_list()
+@@ -1570,8 +1603,8 @@ void segas32_state::sprite_render_list()
  				{
  					clipout.min_y = util::sext(sprite[4], 12);
  					clipout.max_y = util::sext(sprite[5], 12);
@@ -253,7 +304,7 @@ index af146b6d..b2092182 100644
  				}
  
  				/* advance to the next entry */
-@@ -1585,7 +1616,7 @@ void segas32_state::sprite_render_list()
+@@ -1585,7 +1618,7 @@ void segas32_state::sprite_render_list()
  				if (BIT(sprite[0], 13))
  				{
  					yoffs = util::sext(sprite[1], 12);
@@ -262,7 +313,7 @@ index af146b6d..b2092182 100644
  				}
  				spritenum = sprite[0] & 0x1fff;
  				break;
-@@ -2070,7 +2101,7 @@ uint32_t segas32_state::screen_update_system32(screen_device &screen, bitmap_rgb
+@@ -2070,7 +2103,7 @@ uint32_t segas32_state::screen_update_system32(screen_device &screen, bitmap_rgb
  	if (BIT(m_videoram[0x1ff00/2], 15))
  		screen.set_visible_area(0, 52*8-1, 0, 28*8-1);
  	else

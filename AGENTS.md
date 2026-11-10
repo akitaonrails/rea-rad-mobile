@@ -23,7 +23,6 @@ feedback. It never ships ROMs.
 | `crates/radmobile-core` | Pure logic: settings, ROM identification, EEPROM, wheel maths, FFB synthesis, bridge layout, MAME command line |
 | `crates/radmobile-launcher` | The `RadMobile` executable: SDL2 devices and haptics, the bridge loop, the egui menu |
 | `patches/` | Our MAME 0.289 patch (bridge input/output providers, optional EEPROM, true widescreen) |
-| `plugins/radmobile` | MAME Lua plugin: game telemetry for force feedback |
 | `scripts/build-mame.sh`, `scripts/package.sh` | Builds and release packages |
 | `docs/` | Research (Wanszai study, EEPROM map, RAM map), runtime notes |
 
