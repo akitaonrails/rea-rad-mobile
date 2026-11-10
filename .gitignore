@@ -1,0 +1,7 @@
+/target/
+/dist/
+/.work/
+/data/
+*.zip
+*.7z
+!/packaging/**/*.zip

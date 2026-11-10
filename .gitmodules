@@ -1,0 +1,5 @@
+[submodule "vendor/mame"]
+	path = vendor/mame
+	url = https://github.com/mamedev/mame
+	shallow = true
+	ignore = dirty
