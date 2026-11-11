@@ -1,6 +1,6 @@
 Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 
-## Unreleased
+## Changes in 0.2.0
 
 - Gamepad steering reworked: in ASSISTED mode the stick moves the car
   across the road, and letting go keeps the car's line, through bends
