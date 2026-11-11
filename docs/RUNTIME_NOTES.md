@@ -19,7 +19,10 @@ What has been verified running, how, and what has not.
 | Windows launcher | Wine: `--check-roms`, `--list-devices`, `--play` | Works; data next to the executable |
 | Windows package | `dist/pkg/…-windows-x86_64.zip` unpacked, `--play` under Wine | Runs at 100 % with the bridge |
 | Stick release (MAME Testers 08052) | Scripted stick eased to full left then released in one frame, old and new MAME | Old: the game keeps steering (heading 42 → 103 after release). New: steering stops at release |
-| Stick steering assist | Launcher `--play` with `scripts/dev/fake-pad.py` (virtual Xbox 360 pad), race telemetry logged by a MAME Lua script | 0.1 s taps move the car about a lane and it runs straight at top speed; ARCADE mode with the same input ends at the barrier with speed collapsing. The first sharp bend still throws a flat-out car wide in both modes |
+| Stick steering assist | Launcher `--play` with `scripts/dev/fake-pad.py` (virtual Xbox 360 pad), race telemetry logged by a MAME Lua script | 0.1 s taps move the car about a lane and it holds that line. Pinned to the outside barrier of the first long left bend, 0.7 s of full left takes it across and it holds its line through the bend at top speed (0.1.1: stuck at the barrier). Where the road narrows after the first checkpoint, the held line moves in with it. The end of the first bend can still brush the inside barrier for a moment |
+| Bend behaviour | Headless MAME driven from Python through the bridge (`.work/bend`) | Full lock takes the car from one barrier to the other in that bend; 0.1.1's assist steered against the bend (it capped the angle at 48 and pulled it back to 0) |
+| Race clock | `REA_RADM_TIME_SCALE=200`, RAM logged | Step `0x888` → `0x444`; the timer loses a second every two; checkpoint bonuses unchanged in seconds |
+| Player game flag | RAM over a race through the first checkpoint | `0x2018AF` clears at the first checkpoint (so 0.1.1 dropped the assist and FFB there); `0x20F00A` holds until after game over |
 | Linux package | `dist/pkg/…-linux-x86_64.tar.gz` (bookworm build, glibc ≥ 2.36) on Arch, with the virtual wheel | Wheel, FFB (1414 force updates in one race), Exit button; menu renders |
 
 ## Not verified yet

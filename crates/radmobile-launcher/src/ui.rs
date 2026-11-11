@@ -104,8 +104,10 @@ enum Item {
     InvertBrake,
     ResetWheel,
     Region,
+    Preset,
     Difficulty,
     Timer,
+    RaceTime,
     RivalSpeed,
     PoliceSpeed,
     FreePlay,
@@ -162,8 +164,10 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
         ],
         Screen::Game => vec![
             Region,
+            Preset,
             Difficulty,
             Timer,
+            RaceTime,
             RivalSpeed,
             PoliceSpeed,
             FreePlay,
@@ -217,7 +221,9 @@ fn label(item: Item) -> &'static str {
         ResetWheel => "FORGET WHEEL SETUP",
         Region => "REGION",
         Difficulty => "DIFFICULTY",
+        Preset => "PRESET",
         Timer => "STARTING TIMER",
+        RaceTime => "RACE CLOCK",
         RivalSpeed => "RIVAL CAR SPEED",
         PoliceSpeed => "POLICE CAR SPEED",
         FreePlay => "FREE PLAY",
@@ -249,7 +255,7 @@ fn help(item: Item) -> &'static str {
         AttractSound => "Play sound while the game shows its attract demo.",
         InputDevice => "Auto uses a wheel when one is connected, otherwise a gamepad.",
         SteerAssist => {
-            "Assisted: the stick sets the car's angle and centring drives straight. Arcade: the stick is the cabinet wheel, so you counter-steer."
+            "Assisted: the stick moves the car across the road; let go and it keeps its line, through bends too. Arcade: the stick is the cabinet wheel, so you counter-steer."
         }
         StickDeadzone => "How far the stick moves before the car steers.",
         StickLinearity | TriggerLinearity => {
@@ -268,7 +274,13 @@ fn help(item: Item) -> &'static str {
         ResetWheel => "Go back to the automatic wheel setup.",
         Region => "World or US set, when you have both.",
         Difficulty => "The arcade's difficulty, 1 (easy) to 16 (hard). 8 is the factory setting.",
+        Preset => {
+            "Easy: lowest difficulty, slow rivals and police, 60 seconds and a clock at half speed. Arcade: the factory settings."
+        }
         Timer => "Seconds on the clock at the start of each round.",
+        RaceTime => {
+            "How long each second on the clock lasts: 2x doubles the start time and every checkpoint bonus."
+        }
         RivalSpeed => "How fast the rival car drives.",
         PoliceSpeed => "How fast the police cars drive.",
         FreePlay => "No coins needed.",
@@ -684,7 +696,16 @@ impl App {
                 }
             }
             Difficulty => s.game.difficulty = step_u8(s.game.difficulty, dd, 1, 1, 16),
+            Preset => {
+                let next = match cfg::Preset::of(s) {
+                    Some(p) => cycle(&cfg::Preset::ALL, p, dd),
+                    None if dd > 0 => cfg::Preset::Easy,
+                    None => cfg::Preset::Arcade,
+                };
+                next.apply(s);
+            }
             Timer => s.game.timer = step_u8(s.game.timer, dd, 1, 40, 60),
+            RaceTime => s.race_time = cycle(&cfg::RaceTime::ALL, s.race_time, dd),
             RivalSpeed => s.game.rival_speed = step_u8(s.game.rival_speed, dd, 1, 1, 16),
             PoliceSpeed => s.game.police_speed = step_u8(s.game.police_speed, dd, 1, 1, 16),
             FreePlay => s.game.free_play = !s.game.free_play,
@@ -769,7 +790,11 @@ impl App {
                 }
             }
             Difficulty => format!("{}", s.game.difficulty),
+            Preset => cfg::Preset::of(s)
+                .map_or("CUSTOM", |p| p.label())
+                .to_uppercase(),
             Timer => format!("{} SEC", s.game.timer),
+            RaceTime => s.race_time.label().to_uppercase(),
             RivalSpeed => format!("{}", s.game.rival_speed),
             PoliceSpeed => format!("{}", s.game.police_speed),
             FreePlay => on_off(s.game.free_play),

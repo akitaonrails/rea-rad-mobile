@@ -180,6 +180,10 @@ pub fn env(s: &Settings, paths: &Paths) -> Vec<(String, String)> {
     vec![
         ("REA_BRIDGE".into(), path(&paths.bridge)),
         ("REA_S32_WIDE_MARGIN".into(), margin.to_string()),
+        (
+            "REA_RADM_TIME_SCALE".into(),
+            s.race_time.percent().to_string(),
+        ),
         // no MAME warning box waiting for a key before the game
         ("REA_SKIP_STARTUP_SCREENS".into(), "1".into()),
     ]
@@ -249,6 +253,16 @@ mod tests {
         let env = env(&Settings::default(), &paths());
         assert!(env.contains(&("REA_S32_WIDE_MARGIN".into(), "0".into())));
         assert!(env.contains(&("REA_BRIDGE".into(), "/data/bridge.shm".into())));
+        assert!(env.contains(&("REA_RADM_TIME_SCALE".into(), "100".into())));
+    }
+
+    #[test]
+    fn a_longer_race_clock_reaches_mame() {
+        let s = Settings {
+            race_time: crate::settings::RaceTime::X2,
+            ..Settings::default()
+        };
+        assert!(env(&s, &paths()).contains(&("REA_RADM_TIME_SCALE".into(), "200".into())));
     }
 
     #[test]

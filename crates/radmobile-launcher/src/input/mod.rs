@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use radmobile_core::assist;
+use radmobile_core::assist::Assist;
 use radmobile_core::bridge::Bridge;
 use radmobile_core::controls::{Button, Cabinet};
 use radmobile_core::ffb::{FfbEngine, FfbOutput, Telemetry};
@@ -135,6 +135,8 @@ struct State {
     last_mame_seq: u32,
     last_mame_change: Instant,
     engine: FfbEngine,
+    /// Steering assist memory for the race in progress.
+    assist: Assist,
     test_until: Option<Instant>,
     nav: NavTracker,
 }
@@ -167,6 +169,7 @@ fn run(
         last_mame_seq: 0,
         last_mame_change: Instant::now(),
         engine: FfbEngine::new(),
+        assist: Assist::default(),
         test_until: None,
         nav: NavTracker::default(),
     };
@@ -298,6 +301,10 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
     // only a pad in charge of the car is assisted, never one beside a wheel
     let assisted = telemetry
         .filter(|t| t.playing && st.settings.pad.steer_assist && matches!(active, Active::Pad(_)));
+    match &assisted {
+        Some(t) => st.assist.observe(t),
+        None => st.assist = Assist::default(),
+    }
 
     let mut cabinet = Cabinet::default();
     let mut wheel_steer = 0.0;
@@ -319,7 +326,7 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
         if use_pad {
             let mut pad = wheel::read_pad(&st.settings.pad, &d.pad_state);
             if let Some(t) = &assisted {
-                pad.steer = assist::steer(pad.steer, t);
+                pad.steer = st.assist.steer(pad.steer, t);
             }
             cabinet = cabinet.merge(pad);
         }
@@ -436,6 +443,11 @@ fn read_telemetry(bridge: &Bridge) -> Option<Telemetry> {
             Some("rea_lateral") => t.lateral = o.value as f32,
             Some("rea_heading") => t.heading = o.value as f32,
             Some("rea_playing") => t.playing = o.value != 0,
+            Some("rea_frame") => t.frame = o.value as u32,
+            Some("rea_bound0") => t.barrier_left = o.value as f32,
+            Some("rea_bound1") => t.edge_left = o.value as f32,
+            Some("rea_bound2") => t.edge_right = o.value as f32,
+            Some("rea_bound3") => t.barrier_right = o.value as f32,
             _ => {}
         }
     }

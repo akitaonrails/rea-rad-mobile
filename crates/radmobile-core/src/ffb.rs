@@ -18,9 +18,12 @@
 
 /// Rad Mobile's speed at full throttle on the flat (internal units).
 pub const TOP_SPEED: f32 = 430.0;
-/// Lateral position where the car meets the barriers (they hold it
-/// between about -600 and 600).
-pub const BARRIER_LATERAL: f32 = 555.0;
+/// The barriers of the first section, where MAME reports none.
+const FIRST_BARRIER: f32 = 600.0;
+
+/// This close to a barrier the car is touching it (it bounces back
+/// from the barrier by up to about this much).
+pub const TOUCHING: f32 = 45.0;
 
 /// What MAME reports every frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -28,9 +31,68 @@ pub struct Telemetry {
     pub speed: f32,
     /// Across the road; negative is left.
     pub lateral: f32,
-    /// The car's angle to the road; positive points left.
+    /// The car's heading; positive points left. Its angle to the road on
+    /// a straight; through a bend it turns along with the road.
     pub heading: f32,
     pub playing: bool,
+    /// MAME's frame count, one a frame.
+    pub frame: u32,
+    /// Where this section's barriers stop the car (left is negative).
+    /// Both 0 when unknown.
+    pub barrier_left: f32,
+    pub barrier_right: f32,
+    /// Where the road surface ends; the barriers may stand further out.
+    pub edge_left: f32,
+    pub edge_right: f32,
+}
+
+impl Telemetry {
+    /// The barriers (left, right), or the first section's when unknown.
+    pub fn barriers(&self) -> (f32, f32) {
+        if self.barrier_left < self.barrier_right {
+            (self.barrier_left, self.barrier_right)
+        } else {
+            (-FIRST_BARRIER, FIRST_BARRIER)
+        }
+    }
+
+    /// The road's edges (left, right), never outside the barriers.
+    pub fn road(&self) -> (f32, f32) {
+        let (l, r) = self.barriers();
+        if self.edge_left < self.edge_right {
+            (self.edge_left.max(l), self.edge_right.min(r))
+        } else {
+            (l, r)
+        }
+    }
+
+    /// The barrier the car is touching, if any.
+    pub fn touching(&self) -> Option<Side> {
+        let (l, r) = self.barriers();
+        if self.lateral >= r - TOUCHING {
+            Some(Side::Right)
+        } else if self.lateral <= l + TOUCHING {
+            Some(Side::Left)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Left,
+    Right,
+}
+
+impl Side {
+    /// -1 for left, 1 for right, as the lateral and the wheel count.
+    pub fn sign(self) -> f32 {
+        match self {
+            Side::Left => -1.0,
+            Side::Right => 1.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -121,7 +183,8 @@ impl FfbEngine {
                 let speed = (t.speed / TOP_SPEED).clamp(0.0, 1.0);
                 let spring = SPRING_STOPPED + (SPRING_TOP - SPRING_STOPPED) * speed;
                 let mut target = -steer * spring;
-                let scrape = if t.lateral.abs() >= BARRIER_LATERAL && speed > 0.05 {
+                let side = t.touching().map_or(0.0, Side::sign);
+                let scrape = if side != 0.0 && speed > 0.05 {
                     speed
                 } else {
                     0.0
@@ -129,7 +192,7 @@ impl FfbEngine {
                 if scrape > 0.0 {
                     self.phase = (self.phase + dt * SCRAPE_HZ).fract();
                     let buzz = (self.phase * std::f32::consts::TAU).sin() * SCRAPE_BUZZ * scrape;
-                    target += -t.lateral.signum() * SCRAPE_FORCE * scrape + buzz;
+                    target += -side * SCRAPE_FORCE * scrape + buzz;
                 }
                 (
                     target,
@@ -224,6 +287,7 @@ mod tests {
             lateral: 0.0,
             heading: 0.0,
             playing: true,
+            ..Default::default()
         })
     }
 
@@ -316,6 +380,7 @@ mod tests {
             lateral: 600.0,
             heading: 0.0,
             playing: false,
+            ..Default::default()
         });
         let out = run(&mut FfbEngine::new(), 0.5, 1.0, demo, &s);
         assert!((out.constant + SPRING_IDLE).abs() < 1e-3);
@@ -366,6 +431,7 @@ mod tests {
                 lateral: 0.0,
                 heading: 0.0,
                 playing: false,
+                ..Default::default()
             }),
             &s,
         );
@@ -385,6 +451,7 @@ mod tests {
             lateral: 580.0,
             heading: 0.0,
             playing: true,
+            ..Default::default()
         });
         let out = run(&mut FfbEngine::new(), 0.3, 0.0, right_wall, &s);
         assert!(out.rumble > 0.3);
@@ -397,5 +464,39 @@ mod tests {
             sum / 250.0 < -0.1,
             "on average pushed left, away from the wall"
         );
+    }
+
+    #[test]
+    fn the_barriers_move_with_the_section() {
+        let narrow = |lateral| Telemetry {
+            lateral,
+            barrier_left: -380.0,
+            barrier_right: 380.0,
+            ..Default::default()
+        };
+        assert_eq!(narrow(-375.0).touching(), Some(Side::Left));
+        assert_eq!(narrow(300.0).touching(), None);
+        // without MAME's limits, the first section's
+        assert_eq!(Telemetry::default().barriers(), (-600.0, 600.0));
+    }
+
+    #[test]
+    fn the_road_never_reaches_past_the_barriers() {
+        let wide = Telemetry {
+            barrier_left: -1000.0,
+            barrier_right: 1100.0,
+            edge_left: -380.0,
+            edge_right: 350.0,
+            ..Default::default()
+        };
+        assert_eq!(wide.road(), (-380.0, 350.0));
+        let odd = Telemetry {
+            barrier_left: -380.0,
+            barrier_right: 380.0,
+            edge_left: -600.0,
+            edge_right: 600.0,
+            ..Default::default()
+        };
+        assert_eq!(odd.road(), (-380.0, 380.0));
     }
 }

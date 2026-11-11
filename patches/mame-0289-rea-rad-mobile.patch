@@ -79,10 +79,10 @@ index fd59bb3d..dfa82270 100644
  	// also disable for the JavaScript port since the startup screens do not run asynchronously
  	show_gameinfo = show_warnings = false;
 diff --git a/src/mame/sega/segas32.cpp b/src/mame/sega/segas32.cpp
-index 472ca534..c7195d4d 100644
+index 472ca534..bfd0afb1 100644
 --- a/src/mame/sega/segas32.cpp
 +++ b/src/mame/sega/segas32.cpp
-@@ -609,6 +609,11 @@ segas32_state::segas32_state(const machine_config &mconfig, device_type type, co
+@@ -609,6 +609,13 @@ segas32_state::segas32_state(const machine_config &mconfig, device_type type, co
  	, m_output_right_lamp(*this, "Right_lamp")
  	, m_output_right_winner_lamp(*this, "Right_Winner_lamp")
  	, m_output_wiper_lamp(*this, "Wiper_lamp")
@@ -90,11 +90,13 @@ index 472ca534..c7195d4d 100644
 +	, m_rea_lateral(*this, "rea_lateral")
 +	, m_rea_playing(*this, "rea_playing")
 +	, m_rea_heading(*this, "rea_heading")
++	, m_rea_frame(*this, "rea_frame")
++	, m_rea_bounds(*this, "rea_bound%u", 0U)
 +	, m_rea_analog1(*this, "ANALOG1")
  {
  	std::fill(std::begin(m_v60_irq_control), std::end(m_v60_irq_control), 0);
  	std::fill(std::begin(m_v60_irq_timer), std::end(m_v60_irq_timer), nullptr);
-@@ -2286,7 +2291,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
+@@ -2286,7 +2293,7 @@ void segas32_state::device_add_mconfig(machine_config &config)
  
  	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
  	m_screen->set_refresh_hz(60);
@@ -103,7 +105,7 @@ index 472ca534..c7195d4d 100644
  	m_screen->set_visarea(0*8, 52*8-1, 0*8, 28*8-1);
  	m_screen->set_screen_update(FUNC(segas32_state::screen_update_system32));
  
-@@ -2333,7 +2338,7 @@ void segas32_analog_state::device_add_mconfig(machine_config &config)
+@@ -2333,7 +2340,7 @@ void segas32_analog_state::device_add_mconfig(machine_config &config)
  	m_maincpu->set_addrmap(AS_PROGRAM, &segas32_analog_state::system32_analog_map);
  
  	msm6253_device &adc(MSM6253(config, "adc"));
@@ -112,7 +114,7 @@ index 472ca534..c7195d4d 100644
  	adc.set_input_tag<1>("ANALOG2");
  	adc.set_input_tag<2>("ANALOG3");
  	adc.set_input_tag<3>("ANALOG4");
-@@ -4555,8 +4560,8 @@ ROM_START( radm )
+@@ -4555,8 +4562,8 @@ ROM_START( radm )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused (cabinet motor?) */
  	ROM_LOAD( "epr-13686.bin", 0x00000, 0x8000, CRC(317a2857) SHA1(e0788dc7a7d214d9c4d26b24e44c1a0dc9ae477c) ) /* cabinet movement */
  
@@ -123,7 +125,7 @@ index 472ca534..c7195d4d 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4594,8 +4599,8 @@ ROM_START( radmu )
+@@ -4594,8 +4601,8 @@ ROM_START( radmu )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused (cabinet motor?) */
  	ROM_LOAD( "epr-13686.bin", 0x00000, 0x8000, CRC(317a2857) SHA1(e0788dc7a7d214d9c4d26b24e44c1a0dc9ae477c) ) /* cabinet movement */
  
@@ -134,7 +136,7 @@ index 472ca534..c7195d4d 100644
  ROM_END
  
  
-@@ -4642,8 +4647,8 @@ ROM_START( radr )
+@@ -4642,8 +4649,8 @@ ROM_START( radr )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -145,7 +147,7 @@ index 472ca534..c7195d4d 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4687,8 +4692,8 @@ ROM_START( radru )
+@@ -4687,8 +4694,8 @@ ROM_START( radru )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -156,7 +158,7 @@ index 472ca534..c7195d4d 100644
  ROM_END
  
  /**************************************************************************************************************************
-@@ -4732,8 +4737,8 @@ ROM_START( radrj )
+@@ -4732,8 +4739,8 @@ ROM_START( radrj )
  	ROM_REGION( 0x8000, "user2", 0 ) /* unused */
  	ROM_LOAD( "epr-14084.17", 0x00000, 0x8000, CRC(f14ed074) SHA1(e1bb23eac85e3236046527c5c7688f6f23d43aef) ) /* cabinet link */
  
@@ -167,13 +169,20 @@ index 472ca534..c7195d4d 100644
  ROM_END
  
  
-@@ -5938,6 +5943,30 @@ void segas32_state::init_radm()
+@@ -5938,6 +5945,52 @@ void segas32_state::init_radm()
  	segas32_common_init();
  	m_sw1_output = &segas32_state::radm_sw1_output;
  	m_sw2_output = &segas32_state::radm_sw2_output;
 +	m_rea_telemetry = true; // rea-rad-mobile
 +	m_rea_steer_limit = true;
 +	save_item(NAME(m_rea_steer));
++	if (char const *const scale = std::getenv("REA_RADM_TIME_SCALE"))
++	{
++		int const pct = std::atoi(scale);
++		// below 150 a scaled step could equal a step the game sets itself
++		m_rea_time_pct = pct >= 150 ? std::min(pct, 400) : 100;
++	}
++	save_item(NAME(m_rea_time_step));
 +}
 +
 +// rea-rad-mobile: steering for the ADC, rate-limited for Rad Mobile
@@ -190,16 +199,31 @@ index 472ca534..c7195d4d 100644
 +// rea-rad-mobile: work RAM is little-endian 16-bit words from 0x200000
 +void segas32_state::rea_update_telemetry()
 +{
-+	uint16_t const *const ram = &m_system32_workram[0];
-+	m_rea_speed = ram[0x1f44 / 2];                       // 0..~430
-+	m_rea_lateral = int16_t(ram[0x1f46 / 2]);            // negative is left, barriers near +-560
-+	m_rea_heading = int16_t(ram[0x1f30 / 2]);            // angle to the road, positive points left
-+	m_rea_playing = (ram[0x18ae / 2] >> 8) != 0 ? 1 : 0; // byte 0x2018af
++	uint16_t *const ram = &m_system32_workram[0];
++	bool const playing = (ram[0xf00a / 2] & 0xff) != 0; // byte 0x20f00a: set by Start, cleared after game over
++	m_rea_speed = ram[0x1f44 / 2];                      // 0..~430
++	m_rea_lateral = int16_t(ram[0x1f46 / 2]);           // negative is left, barriers near +-560
++	m_rea_heading = int16_t(ram[0x1f30 / 2]);           // angle to the road, positive points left
++	m_rea_playing = playing ? 1 : 0;
++	m_rea_frame = m_rea_frame + 1;
++	// the section's limits for the lateral; the barriers clamp it (code at 0x71e9b)
++	m_rea_bounds[0] = int16_t(ram[0xf4d4 / 2]);
++	m_rea_bounds[1] = int16_t(ram[0xf4d0 / 2]);
++	m_rea_bounds[2] = int16_t(ram[0xf4d2 / 2]);
++	m_rea_bounds[3] = int16_t(ram[0xf4d6 / 2]);
++
++	// the game sets the clock step at the start of each round; scale each new one
++	uint16_t &step = ram[0xf4b4 / 2];
++	if (m_rea_time_pct != 100 && playing && step != m_rea_time_step)
++	{
++		m_rea_time_step = uint16_t(step * 100 / m_rea_time_pct);
++		step = m_rea_time_step;
++	}
  }
  
  
 diff --git a/src/mame/sega/segas32.h b/src/mame/sega/segas32.h
-index aecffe45..575b64dc 100644
+index aecffe45..ddd6ccbb 100644
 --- a/src/mame/sega/segas32.h
 +++ b/src/mame/sega/segas32.h
 @@ -263,6 +263,16 @@ protected:
@@ -219,7 +243,7 @@ index aecffe45..575b64dc 100644
  	uint8_t m_sprite_control[8]{};
  	std::unique_ptr<uint32_t[]> m_spriteram_32bit;
  	std::unique_ptr<int32_t[]> m_prev_bgstartx;
-@@ -301,6 +311,27 @@ protected:
+@@ -301,6 +311,38 @@ protected:
  	output_finder<> m_output_right_lamp;
  	output_finder<> m_output_right_winner_lamp;
  	output_finder<> m_output_wiper_lamp;
@@ -231,7 +255,18 @@ index aecffe45..575b64dc 100644
 +	output_finder<> m_rea_lateral;
 +	output_finder<> m_rea_playing;
 +	output_finder<> m_rea_heading;
++	output_finder<> m_rea_frame; // counts vblanks, so the launcher can tell frames apart
++	output_finder<4> m_rea_bounds; // barrier left, road edge left, road edge right, barrier right
 +	void rea_update_telemetry();
++
++	// rea-rad-mobile: a longer race clock. Each game tick Rad Mobile takes a
++	// step (0x7a8..0x908 by difficulty) off a 16-bit counter at 0x20f4b6 and
++	// a second off the timer when it wraps (code at 0x67646). The step lives
++	// in RAM at 0x20f4b4; dividing it makes every second, the start time and
++	// the checkpoint extensions alike, last longer. Set from
++	// REA_RADM_TIME_SCALE (percent, 150..400); 100 keeps the arcade clock.
++	int m_rea_time_pct = 100;
++	uint16_t m_rea_time_step = 0;
 +
 +	// rea-rad-mobile: Rad Mobile drops any steering sample more than 0x40
 +	// away from the last one it accepted and keeps the old value (code at

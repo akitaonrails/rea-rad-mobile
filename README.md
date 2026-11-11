@@ -15,8 +15,8 @@ support with force feedback.
 | Video | Desktop, 1080p, 1440p or 4K rendering; fullscreen or window; 4:3, stretch, or **true widescreen** (the game draws more of the road at 16:9, 16:10 or ~21:9); Sharp, Smooth, CRT and CRT Deluxe filters; brightness; vsync |
 | Wheels | Logitech, Thrustmaster, Fanatec (CSL DD, CSL Elite…), MOZA and generic wheels; steering lock (180–900°, Full; 270° default) computed from the wheel's rotation; separate pedal devices; a setup wizard for pedals and buttons; pedal calibration and invert |
 | Force feedback | Synthetic, from the car's state read out of the game: speed-dependent centring and damping, barrier scrape, crash jolts; strength and invert; Wanszai's effect keepalive; gamepad rumble |
-| Gamepads | Assisted stick steering (centring the stick drives straight down the road) or arcade steering; stick and trigger deadzone and curve (Linear … Cubic) |
-| Arcade settings | Difficulty, starting timer, rival and police car speed, free play, credits, attract sound — written into the game's EEPROM |
+| Gamepads | Assisted stick steering (the stick moves the car across the road; centred, it follows the road through bends) or arcade steering; stick and trigger deadzone and curve (Linear … Cubic) |
+| Arcade settings | Difficulty, starting timer, rival and police car speed, free play, credits, attract sound — written into the game's EEPROM; a longer race clock (1.5×–3×); ARCADE and EASY presets |
 | ROMs | Found by content under any file name; old sets without the factory EEPROM work |
 
 ## Using it
@@ -37,16 +37,17 @@ The player guide is [packaging/README-player.txt](packaging/README-player.txt).
  wheel / pedals / pad ──SDL2──▶ launcher ──shared memory──▶ MAME (patched)
         ▲                       │  steering lock, curves,      │ "REA Bridge" joystick
         └── force feedback ◀────┘  pedal calibration, FFB  ◀───┘ rea_speed / rea_lateral /
-             (DirectInput / evdev)                                rea_playing outputs
+             (DirectInput / evdev)                                rea_playing … outputs
 ```
 
 - The launcher owns every input device, as Wanszai's wrappers do. MAME
   sees one virtual joystick fed through a memory-mapped bridge file
   (`-joystickprovider reabridge`), so device numbering, deadzones and
   platform differences never reach the game.
-- MAME publishes the car's speed, lateral position, heading and game
-  state (`-output reabridge`); the launcher turns them into forces and,
-  for gamepads, into the steering assist.
+- MAME publishes the car's speed, lateral position, heading, the
+  section's barriers and game state (`-output reabridge`); the launcher
+  turns them into forces and, for gamepads, into the steering assist,
+  which learns each bend from how the car moves.
 - The patched driver rate-limits the steering it feeds the game: Rad
   Mobile ignores a steering reading that jumps further than a real wheel
   can turn, so a released stick used to keep the car turning.

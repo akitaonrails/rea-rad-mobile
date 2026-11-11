@@ -163,6 +163,98 @@ impl InputMode {
     }
 }
 
+/// How long each second of the race clock lasts. Our MAME patch slows
+/// the game's own clock (docs/RAM_MAP.md), so the starting time and every
+/// checkpoint extension last longer alike.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RaceTime {
+    Arcade,
+    X1_5,
+    X2,
+    X3,
+}
+
+impl RaceTime {
+    pub const ALL: [RaceTime; 4] = [RaceTime::Arcade, RaceTime::X1_5, RaceTime::X2, RaceTime::X3];
+    const NAMES: [&'static str; 4] = ["arcade", "1.5x", "2x", "3x"];
+
+    /// The clock's length against the arcade's, for `REA_RADM_TIME_SCALE`.
+    pub fn percent(self) -> u16 {
+        match self {
+            RaceTime::Arcade => 100,
+            RaceTime::X1_5 => 150,
+            RaceTime::X2 => 200,
+            RaceTime::X3 => 300,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RaceTime::Arcade => "Arcade",
+            RaceTime::X1_5 => "1.5x",
+            RaceTime::X2 => "2x",
+            RaceTime::X3 => "3x",
+        }
+    }
+}
+
+/// Ready-made sets of the arcade settings that decide how hard a race is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Preset {
+    /// The factory settings.
+    Arcade,
+    /// Easiest difficulty, slowest rivals and police, a 60 second start
+    /// and a clock at half speed.
+    Easy,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 2] = [Preset::Arcade, Preset::Easy];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Preset::Arcade => "Arcade",
+            Preset::Easy => "Easy",
+        }
+    }
+
+    fn values(self) -> (GameSettings, RaceTime) {
+        let arcade = GameSettings::default();
+        match self {
+            Preset::Arcade => (arcade, RaceTime::Arcade),
+            Preset::Easy => (
+                GameSettings {
+                    difficulty: 1,
+                    timer: 60,
+                    rival_speed: 1,
+                    police_speed: 1,
+                    ..arcade
+                },
+                RaceTime::X2,
+            ),
+        }
+    }
+
+    /// Set what the preset covers; free play, credits and sound are kept.
+    pub fn apply(self, s: &mut Settings) {
+        let (g, race_time) = self.values();
+        s.game.difficulty = g.difficulty;
+        s.game.timer = g.timer;
+        s.game.rival_speed = g.rival_speed;
+        s.game.police_speed = g.police_speed;
+        s.race_time = race_time;
+    }
+
+    /// The preset the settings match, if any.
+    pub fn of(s: &Settings) -> Option<Preset> {
+        Preset::ALL.into_iter().find(|p| {
+            let mut probe = s.clone();
+            p.apply(&mut probe);
+            probe == *s
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
     pub display: Display,
@@ -178,6 +270,7 @@ pub struct Settings {
     /// "radm" or "radmu"; which set to prefer when both are present.
     pub region: String,
     pub game: GameSettings,
+    pub race_time: RaceTime,
     pub input: InputMode,
     pub wheel: WheelSettings,
     pub pad: PadSettings,
@@ -199,6 +292,7 @@ impl Default for Settings {
             volume: 100,
             region: "radm".into(),
             game: GameSettings::default(),
+            race_time: RaceTime::Arcade,
             input: InputMode::Auto,
             wheel: WheelSettings::default(),
             pad: PadSettings::default(),
@@ -271,6 +365,12 @@ impl Settings {
                 _ => "radm".into(),
             },
             game,
+            race_time: pick(
+                &RaceTime::ALL,
+                ini.get("race_time"),
+                &RaceTime::NAMES,
+                d.race_time,
+            ),
             input: pick(
                 &InputMode::ALL,
                 ini.get("input_device"),
@@ -347,6 +447,13 @@ impl Settings {
         ini.set("timer", &self.game.timer.to_string());
         ini.set("rival_speed", &self.game.rival_speed.to_string());
         ini.set("police_speed", &self.game.police_speed.to_string());
+        ini.set(
+            "race_time",
+            RaceTime::NAMES[RaceTime::ALL
+                .iter()
+                .position(|r| *r == self.race_time)
+                .unwrap()],
+        );
         ini.set("attract_sound", b(self.game.attract_sound));
         ini.set("free_play", b(self.game.free_play));
         ini.set("credits_start", &self.game.credits_to_start.to_string());
@@ -411,6 +518,7 @@ mod tests {
                 attract_sound: true,
                 ..Default::default()
             },
+            race_time: RaceTime::X3,
             input: InputMode::Wheel,
             wheel: WheelSettings {
                 lock: SteeringLock::Full,
@@ -434,14 +542,49 @@ mod tests {
     }
 
     #[test]
+    fn defaults_are_the_arcade_preset() {
+        assert_eq!(Preset::of(&Settings::default()), Some(Preset::Arcade));
+    }
+
+    #[test]
+    fn the_easy_preset_at_least_doubles_the_race_time() {
+        let mut s = Settings::default();
+        Preset::Easy.apply(&mut s);
+        assert_eq!(Preset::of(&s), Some(Preset::Easy));
+        let arcade = Settings::default();
+        let seconds = |s: &Settings| u32::from(s.game.timer) * u32::from(s.race_time.percent());
+        assert!(seconds(&s) >= 2 * seconds(&arcade));
+        assert!(s.game.difficulty < arcade.game.difficulty);
+    }
+
+    #[test]
+    fn a_preset_keeps_coins_and_sound() {
+        let mut s = Settings::default();
+        s.game.free_play = false;
+        s.game.attract_sound = true;
+        Preset::Easy.apply(&mut s);
+        assert!(!s.game.free_play && s.game.attract_sound);
+    }
+
+    #[test]
+    fn changed_preset_settings_match_no_preset() {
+        let s = Settings {
+            race_time: RaceTime::X1_5,
+            ..Default::default()
+        };
+        assert_eq!(Preset::of(&s), None);
+    }
+
+    #[test]
     fn bad_values_fall_back_or_clamp() {
         let s = Settings::from_ini(&Ini::parse(
-            "difficulty=99\nffb_strength=-5\naspect=round\nsteer_lock=275\nregion=moon\n",
+            "difficulty=99\nffb_strength=-5\naspect=round\nsteer_lock=275\nregion=moon\nrace_time=9x\n",
         ));
         assert_eq!(s.game.difficulty, 16);
         assert_eq!(s.ffb.strength, 0);
         assert_eq!(s.aspect, Aspect::Original);
         assert_eq!(s.wheel.lock, SteeringLock::Degrees(270));
         assert_eq!(s.region, "radm");
+        assert_eq!(s.race_time, RaceTime::Arcade);
     }
 }

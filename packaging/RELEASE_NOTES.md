@@ -1,5 +1,21 @@
 Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 
+## Unreleased
+
+- Gamepad steering reworked: in ASSISTED mode the stick moves the car
+  across the road, and letting go keeps the car's line, through bends
+  too. The game's bends turn the car's heading, which 0.1.1's assist
+  fought, so it pinned the car to the outside barrier and full stick
+  could not bring it back. The assist now learns each bend from how the
+  car moves and uses each section's real barriers (they move in to ±380
+  after the first checkpoint).
+- The assist and force feedback no longer switch off at the first
+  checkpoint (the bundled MAME read the wrong "game in progress" flag).
+- New **RACE CLOCK** setting (GAME page): 1.5x, 2x or 3x longer seconds,
+  start time and checkpoint bonuses alike.
+- New **PRESET** setting (GAME page): EASY (lowest difficulty, slowest
+  rivals and police, 60 seconds, 2x clock) or ARCADE (factory settings).
+
 ## Changes in 0.1.1
 
 - Gamepad steering fixed: letting go of the stick after steering hard no

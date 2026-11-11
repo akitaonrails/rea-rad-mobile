@@ -40,9 +40,9 @@ INVERT FFB     If the wheel pushes the wrong way.
 Gamepads: left stick steers, right trigger accelerates, left trigger
 brakes, X lights, Y wiper, Start starts, Back inserts a coin.
 STICK STEERING (CONTROLLER page): ASSISTED, the default, makes the stick
-set the car's angle, so letting go drives straight down the road. ARCADE
-makes the stick the cabinet wheel: the car keeps its angle until you
-steer back, as on the real machine. Either way, brake for sharp bends.
+move the car across the road; let go and the car keeps its line, through
+bends too. ARCADE makes the stick the cabinet wheel: the car keeps its
+angle until you steer back, as on the real machine.
 Keyboard: arrows steer, Left Ctrl accelerates, Left Alt brakes,
 Space lights, Left Shift wiper, 1 starts, Esc quits.
 
@@ -61,6 +61,11 @@ GAME SETTINGS
 The arcade operator's settings: difficulty, starting timer, rival and
 police car speed, free play and credits, attract sound. They are
 written to the game before every run.
+RACE CLOCK     1.5x, 2x or 3x makes every second on the clock last that
+               much longer: the start time and every checkpoint bonus.
+PRESET         EASY sets the lowest difficulty, the slowest rivals and
+               police, 60 seconds and a 2x clock. ARCADE restores the
+               factory settings.
 
 
 FILES
