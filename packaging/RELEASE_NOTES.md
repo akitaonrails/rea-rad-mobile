@@ -16,6 +16,9 @@ Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 - At 100 % volume MAME keeps its own volume setting (Windows was silent
   at some lower volumes; if yours is, set 100 % and please report it).
 
+Tried it on a wheel or PC we haven't? Tell us with the **Test report**
+form on the project's Issues page, even if everything worked.
+
 ## Changes in 0.4.0
 
 - New **ARCADE CRT** and **TRINITRON CRT** filters, after the CRT of
