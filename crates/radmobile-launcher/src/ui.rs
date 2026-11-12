@@ -554,7 +554,7 @@ impl App {
 
     fn save(&mut self) {
         let text = self.settings.to_ini().to_string();
-        if let Err(e) = std::fs::write(self.paths.settings(), text) {
+        if let Err(e) = crate::session::write_atomic(&self.paths.settings(), text.as_bytes()) {
             self.say(format!("COULD NOT SAVE SETTINGS: {e}"), BAD);
         }
         self.input.send(Command::Configure {
@@ -565,7 +565,10 @@ impl App {
 
     fn save_profile(&mut self) {
         let result = match &self.profile {
-            Some(p) => std::fs::write(self.paths.wheel_profile(), p.to_ini().to_string()),
+            Some(p) => crate::session::write_atomic(
+                &self.paths.wheel_profile(),
+                p.to_ini().to_string().as_bytes(),
+            ),
             None => match std::fs::remove_file(self.paths.wheel_profile()) {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
                 r => r,
