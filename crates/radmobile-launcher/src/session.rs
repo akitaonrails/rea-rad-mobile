@@ -11,6 +11,7 @@ use radmobile_core::bridge::Bridge;
 use radmobile_core::rom::{self, Inventory, RomSet};
 use radmobile_core::settings::{Aspect, Display, Settings};
 use radmobile_core::{art, controls, eeprom, mame};
+use rea_launcher::fsx;
 
 use crate::paths::AppPaths;
 
@@ -78,15 +79,14 @@ pub struct Prepared {
     pub log: PathBuf,
 }
 
-/// Write `data` to `path` through a temporary file and a rename, so a
-/// crash never leaves half a file.
-fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, data)?;
-    fs::rename(&tmp, path)
+/// Write `data` to `path` through a temporary file and a rename
+/// ([`fsx::write_atomic`]), so a crash never leaves half a file. Also
+/// removes the `<name>.tmp` that 0.5.0 and older wrote through, should a
+/// crash have left one.
+pub fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
+    fsx::write_atomic(path, data)?;
+    let _ = fsx::remove_files(&[&path.with_extension("tmp")]);
+    Ok(())
 }
 
 /// The romset ready for MAME: found, and rebuilt under MAME 0.289's names
@@ -272,8 +272,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a/b/c.bin");
         write_atomic(&p, b"one").unwrap();
+        // 0.5.0's temporary file, left by a crash, goes with the next write
+        fs::write(p.with_extension("tmp"), b"half").unwrap();
         write_atomic(&p, b"two").unwrap();
         assert_eq!(fs::read(&p).unwrap(), b"two");
         assert!(!p.with_extension("tmp").exists());
+        let left: Vec<_> = fs::read_dir(p.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left, ["c.bin"]);
     }
 }

@@ -1,24 +1,31 @@
 //! Reading and writing the launcher's pictures ([`radmobile_core::art`]) as PNG.
 
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter};
 use std::path::Path;
 
 use radmobile_core::art::Image;
+use rea_launcher::fsx;
 
+/// Written through a temporary file and a rename ([`fsx::put_in_place`]).
 pub fn save_png(path: &Path, image: &Image) -> anyhow::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension("tmp");
-    {
-        let file = BufWriter::new(File::create(&tmp)?);
-        let mut enc = png::Encoder::new(file, image.width, image.height);
+    fsx::put_in_place(path, |tmp| {
+        let mut file = BufWriter::new(File::create(tmp)?);
+        let mut enc = png::Encoder::new(&mut file, image.width, image.height);
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
-        enc.write_header()?.write_image_data(&image.rgba)?;
-    }
-    std::fs::rename(&tmp, path)?;
+        enc.write_header()
+            .and_then(|mut w| {
+                w.write_image_data(&image.rgba)?;
+                w.finish()
+            })
+            .map_err(io::Error::other)?;
+        file.into_inner()
+            .map_err(io::IntoInnerError::into_error)?
+            .sync_all()
+    })?;
+    // 0.5.0 and older wrote through `<name>.tmp`
+    let _ = fsx::remove_files(&[&path.with_extension("tmp")]);
     Ok(())
 }
 
