@@ -22,3 +22,40 @@ jobs:
       - run: cargo test --workspace --locked
       - name: Shell scripts
         run: for f in scripts/*.sh scripts/ci/*.sh; do sh -n "$f"; done
+      # STANDARDS where a machine can tell; the rules that don't fit an
+      # arcade MAME wrapper are waived in .rea-check-waivers, with why.
+      - name: launcher-check
+        run: sh sdk/scripts/launcher-check --github .
+
+  # The Windows code (the console, the single-instance mutex, MAME's job
+  # object) is linted for its own target and run under Wine, headless
+  # (rea-launcher-sdk STANDARDS: Windows code is run, not only linted).
+  windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: System packages
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 lld wine wine64 wine32:i386 curl
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+          rustup target add x86_64-pc-windows-gnu
+      - name: Windows target links with lld
+        run: sh sdk/packaging/check-lld.sh x86_64-pc-windows-gnu
+      - name: Clippy (x86_64-pc-windows-gnu)
+        run: cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-gnu -- -D warnings
+      - name: SDL2 (pinned MinGW package)
+        run: scripts/build-launcher.sh sdl2
+      - name: Tests under Wine
+        run: |
+          sdl="$PWD/dist/sdl2/$(sed -n 's/^dir=//p' packaging/sdl2.pin)"
+          export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld -L $sdl/lib"
+          export WINEPATH="Z:$(printf '%s' "$PWD/dist/sdl2" | tr / '\\')"
+          sdk/scripts/wine-test --target x86_64-pc-windows-gnu --locked --workspace
+          # MAME's job object and SDL under Wine (the SDK crate's own tests)
+          sdk/scripts/wine-test --target x86_64-pc-windows-gnu --locked -p rea-launcher-native --lib

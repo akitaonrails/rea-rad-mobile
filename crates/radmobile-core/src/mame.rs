@@ -299,6 +299,11 @@ mod tests {
         }
     }
 
+    /// `\\` as `/`, for paths made with `Path::join` on Windows.
+    fn slashes(path: &str) -> String {
+        path.replace('\\', "/")
+    }
+
     fn value<'a>(args: &'a [String], key: &str) -> Option<&'a str> {
         args.iter()
             .position(|a| a == key)
@@ -324,9 +329,10 @@ mod tests {
         assert_eq!(value(&a, "-output"), Some("reabridge"));
         assert_eq!(value(&a, "-ctrlr"), Some("rea"));
         assert_eq!(value(&a, "-rompath"), Some("/data/roms"));
+        // (`Path::join` puts the platform's separator between the parts)
         assert_eq!(
-            value(&a, "-artpath"),
-            Some("/data/artwork;/opt/rm/mame/artwork")
+            value(&a, "-artpath").map(slashes),
+            Some("/data/artwork;/opt/rm/mame/artwork".into())
         );
         assert_eq!(value(&a, "-bgfx_screen_chains"), Some("default"));
         assert!(a.contains(&"-nowindow".to_string()));
@@ -448,7 +454,10 @@ mod tests {
         assert_eq!(a[0], "radm");
         assert_eq!(value(&a, "-video"), Some("none"));
         assert_eq!(value(&a, "-sound"), Some("none"));
-        assert_eq!(value(&a, "-nvram_directory"), Some("/d/menu/capture/nvram"));
+        assert_eq!(
+            value(&a, "-nvram_directory").map(slashes),
+            Some("/d/menu/capture/nvram".into())
+        );
         assert!(a.contains(&"-nothrottle".to_string()));
         let script = backdrop_script();
         for f in BACKDROP_FRAMES {

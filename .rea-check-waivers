@@ -1,0 +1,6 @@
+sdk-workflows: an arcade MAME wrapper; its CI builds a patched MAME and SDL2 the SDK workflows don't, so .github/workflows/ci.yml runs the family's checks itself (Windows-target clippy, wine-test, lld, launcher-check) and release.yml builds the packages (SDK study 2026-11-12, step 10)
+readme-sections: the README follows the arcade-wrapper layout (what you get, install and play, what was tested, reporting); a move to the family outline is a separate docs change
+option-tests: no cfg::spec option table yet; the menu's options live in settings.ini (settings.rs, with round-trip and old-format snapshot tests) and the menu model is tested in ui.rs. Full CLI parity is a later change that adds flags
+issue-unknown-edition: there are no editions: the launcher identifies ROM sets by CRC, and --check-roms names the missing files of an incomplete set (bug.yml covers the report)
+issue-bug-report: .github/ISSUE_TEMPLATE/bug.yml and test-report.yml (which has the "what worked" list) cover it
+sdk-update: SDK bumps are made by hand with sdk/scripts/sdk-bump, only when a release brings something the launcher uses

@@ -4,6 +4,8 @@
 #   scripts/build-launcher.sh linux     target/release/radmobile-launcher
 #   scripts/build-launcher.sh windows   target/x86_64-pc-windows-gnu/release/radmobile-launcher.exe
 #                                       (+ dist/sdl2/SDL2.dll)
+#   scripts/build-launcher.sh sdl2      only fetch the pinned SDL2 MinGW package
+#                                       into dist/sdl2 (for Windows-target tests)
 #
 # The Windows build runs in the `gaming` distrobox (MinGW-w64, LLD and its
 # own Rust toolchain), against the pinned SDL2 MinGW package.
@@ -31,6 +33,9 @@ fetch_sdl2() {
 }
 
 case $target in
+sdl2)
+	fetch_sdl2
+	;;
 linux)
 	cargo build --release --locked -p radmobile-launcher --manifest-path "$root/Cargo.toml"
 	;;
@@ -44,11 +49,12 @@ windows)
 	# the box keeps its own Rust toolchain in its home
 	export CARGO_HOME="$HOME/.cargo" RUSTUP_HOME="$HOME/.rustup" PATH="$HOME/.cargo/bin:$PATH"
 	sdl="$root/dist/sdl2/$(pin dir)/lib"
+	# lld as in .cargo/config.toml (these variables replace its values), plus SDL2
 	export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc
 	export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld -L $sdl"
 	cargo build --release --locked -p radmobile-launcher --target x86_64-pc-windows-gnu --manifest-path "$root/Cargo.toml"
 	;;
 *)
-	die "unknown target '$target' (linux or windows)"
+	die "unknown target '$target' (linux, windows or sdl2)"
 	;;
 esac
