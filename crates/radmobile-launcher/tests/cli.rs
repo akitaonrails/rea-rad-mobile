@@ -51,15 +51,17 @@ fn a_bad_command_line_prints_why_and_the_usage_and_exits_2() {
 /// One launcher at a time (SDK study §5.9: a second one started a second
 /// MAME and truncated the running game's bridge.shm). The lock is taken
 /// here, in a private runtime folder, as a running launcher would hold it.
+/// `--check-roms` and `--list-devices` only look, so they still answer (as
+/// in 0.5.0), but leave the running launcher's files alone.
 #[cfg(unix)]
 #[test]
 fn a_second_launcher_is_refused_with_exit_5_and_touches_nothing() {
     let runtime = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();
     let lock = runtime.path().join("rea-launcher-rea-rad-mobile.lock");
-    let run_check = || {
+    let run_with = |flag: &str| {
         Command::new(env!("CARGO_BIN_EXE_radmobile-launcher"))
-            .args(["--check-roms", "--data"])
+            .args([flag, "--data"])
             .arg(data.path())
             .env("XDG_RUNTIME_DIR", runtime.path())
             .output()
@@ -67,20 +69,35 @@ fn a_second_launcher_is_refused_with_exit_5_and_touches_nothing() {
     };
     let held = rea_launcher::instance::single_at(&lock).unwrap();
     assert!(held.is_held());
-    let out = run_check();
+    let out = run_with("--print-mame-command");
     assert_eq!(out.status.code(), Some(5));
     assert_eq!(
         text(&out.stderr),
         "Rad Mobile: the launcher is already running (quit it, and its game, first)\n"
     );
     assert_eq!(text(&out.stdout), "");
-    assert!(
-        std::fs::read_dir(data.path()).unwrap().next().is_none(),
-        "no log, no settings: the running launcher's files are left alone"
+    let log = data.path().join("launcher.log");
+    std::fs::write(&log, "the running launcher's log\n").unwrap();
+    let out = run_with("--check-roms");
+    assert_eq!(out.status.code(), Some(1), "answers: no ROMs here");
+    assert!(text(&out.stdout).starts_with("ROM NOT FOUND"));
+    assert_eq!(
+        std::fs::read_dir(data.path()).unwrap().count(),
+        1,
+        "no new log, no .old, no settings: the running launcher's files are left alone"
     );
-    // once the first one is gone, the next one runs
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap(),
+        "the running launcher's log\n"
+    );
+    // once the first one is gone, the next one runs and logs
     drop(held);
-    let out = run_check();
+    let out = run_with("--check-roms");
     assert_eq!(out.status.code(), Some(1), "no ROMs here");
     assert!(text(&out.stdout).starts_with("ROM NOT FOUND"));
+    assert!(
+        std::fs::read_to_string(&log)
+            .unwrap()
+            .contains("Rad Mobile launcher")
+    );
 }

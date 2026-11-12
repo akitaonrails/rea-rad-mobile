@@ -120,13 +120,20 @@ fn main() {
     };
     // before the log: a refused second start must not touch the running
     // launcher's launcher.log
-    let _instance = match platform::single_instance(cli.run()) {
-        Ok(guard) => guard,
-        Err(code) => std::process::exit(code),
+    let looks_only = cli.check_roms || cli.list_devices;
+    let instance: Option<Box<dyn std::any::Any>> = if looks_only {
+        platform::instance_if_free()
+    } else {
+        match platform::single_instance(cli.run()) {
+            Ok(guard) => Some(Box::new(guard)),
+            Err(code) => std::process::exit(code),
+        }
     };
     let paths = AppPaths::detect(cli.data.clone());
     let _ = std::fs::create_dir_all(&paths.data);
-    log::init(&paths.log());
+    if instance.is_some() {
+        log::init(&paths.log());
+    }
     log::line(&format!(
         "Rad Mobile launcher {} — {} — MAME {} — data {}",
         env!("CARGO_PKG_VERSION"),
