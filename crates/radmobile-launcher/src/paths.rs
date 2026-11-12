@@ -6,6 +6,17 @@
 
 use std::path::{Path, PathBuf};
 
+use rea_launcher::paths::{self, DataDir};
+
+/// `data/` beside the executable when writable, else
+/// `%LOCALAPPDATA%\RadMobile` or `$XDG_DATA_HOME/rad-mobile`
+/// (`~/.local/share/rad-mobile`), else the temp folder.
+pub const DATA_DIR: DataDir<'static> = DataDir {
+    portable: "data",
+    windows: "RadMobile",
+    xdg: "rad-mobile",
+};
+
 #[derive(Debug, Clone)]
 pub struct AppPaths {
     pub exe_dir: PathBuf,
@@ -34,16 +45,8 @@ impl AppPaths {
             .or_else(|| Some(exe_dir.join("mame")).filter(|d| d.join(MAME_EXE).is_file()))
             .or_else(|| dev_mame_dir(&exe_dir))
             .unwrap_or_else(|| exe_dir.join("mame"));
-        let data = data_override.unwrap_or_else(|| {
-            let portable = exe_dir.join("data");
-            if is_writable(&portable) {
-                portable
-            } else {
-                user_data_dir()
-            }
-        });
-        // MAME runs from its own folder, so every path it gets is absolute
-        let data = std::path::absolute(&data).unwrap_or(data);
+        // absolute: MAME runs from its own folder
+        let data = paths::data_dir(&exe_dir, data_override, DATA_DIR, &|k| std::env::var_os(k));
         AppPaths {
             user_roms: exe_dir.join("roms"),
             exe_dir,
@@ -79,31 +82,6 @@ fn dev_mame_dir(exe_dir: &Path) -> Option<PathBuf> {
         .find(|d| d.join(MAME_EXE).is_file())
 }
 
-fn is_writable(dir: &Path) -> bool {
-    if std::fs::create_dir_all(dir).is_err() {
-        return false;
-    }
-    let probe = dir.join(".write-test");
-    let ok = std::fs::write(&probe, b"").is_ok();
-    let _ = std::fs::remove_file(&probe);
-    ok
-}
-
-fn user_data_dir() -> PathBuf {
-    if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir)
-            .join("RadMobile")
-    } else {
-        std::env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-            .unwrap_or_else(std::env::temp_dir)
-            .join("rad-mobile")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     //! The data folder's fallback order, pinned before the move onto
@@ -127,7 +105,11 @@ mod tests {
             return;
         };
         // a line of its own: libtest prints the test's name before it
-        println!("\nuser={}", user_data_dir().display());
+        // the fallback after the portable folder: a "folder" under this
+        // executable (a file) can never be created
+        let me = std::env::current_exe().unwrap();
+        let user = paths::data_dir(&me, None, DATA_DIR, &|k| std::env::var_os(k));
+        println!("\nuser={}", user.display());
         println!("temp={}", std::env::temp_dir().display());
         if mode == "detect" {
             let paths = AppPaths::detect(None);
@@ -194,12 +176,11 @@ mod tests {
         let p = user_dir(&[("TMPDIR", "/tmp-radm")]);
         assert_eq!(p.temp, Path::new("/tmp-radm"));
         assert_eq!(p.user, Path::new("/tmp-radm/rad-mobile"));
-        // pinned as it is: an empty XDG_DATA_HOME counts as set (the XDG
-        // spec says to ignore it), giving a relative folder that
-        // `AppPaths::detect` then makes absolute against the working folder
+        // an empty XDG_DATA_HOME counts as unset, as the XDG spec says (0.5.0
+        // took it as set: a `rad-mobile` folder in the working folder)
         assert_eq!(
             user_dir(&[("XDG_DATA_HOME", ""), ("HOME", "/home/p")]).user,
-            Path::new("rad-mobile")
+            Path::new("/home/p/.local/share/rad-mobile")
         );
     }
 
@@ -211,6 +192,9 @@ mod tests {
             Path::new(r"C:\Users\p\AppData\Local\RadMobile")
         );
         let p = user_dir(&[]);
+        assert_eq!(p.user, p.temp.join("RadMobile"));
+        // an empty LOCALAPPDATA counts as unset (0.5.0: a relative folder)
+        let p = user_dir(&[("LOCALAPPDATA", "")]);
         assert_eq!(p.user, p.temp.join("RadMobile"));
     }
 
