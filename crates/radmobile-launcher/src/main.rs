@@ -157,6 +157,11 @@ fn list_devices(
     }
     for (i, d) in snap.devices.iter().enumerate() {
         let st = &snap.states[i];
+        let ffb = match (&d.ffb, d.haptic) {
+            (Some(effects), _) => effects.as_str(),
+            (None, true) => "yes",
+            (None, false) => "none",
+        };
         println!(
             "{i}: {:?} \"{}\" {:04x}:{:04x} guid {} axes {:?} buttons {} ffb {}",
             d.kind,
@@ -166,8 +171,9 @@ fn list_devices(
             d.id.guid,
             st.axes,
             st.buttons.len(),
-            d.ffb.as_deref().unwrap_or("none")
+            ffb
         );
+        println!("   path {}", d.path);
     }
     println!("active: {:?}", snap.active);
     0

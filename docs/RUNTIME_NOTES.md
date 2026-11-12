@@ -31,15 +31,30 @@ What has been verified running, how, and what has not.
 
 ## Not verified yet
 
-- A physical wheel. The owner's Fanatec CSL DD was not connected during
-  development; everything up to the evdev/DirectInput FF calls was
-  exercised with the virtual wheel. First things to check on hardware:
-  force direction (INVERT FFB exists for that), strength at 50 %, and
-  whether the CSL DD's pedals are on the wheel base or a separate device
-  (run WHEEL SETUP).
+- A physical wheel on Linux. The owner's Fanatec CSL DD ran on Windows
+  (0.4.0, issues #1 and #2): steering, pedals and force feedback work.
+  Its forces pulled away from the centre there. SDL gives the direction
+  a force comes *from* (SDL_haptic.h), and we sent "from the east", so
+  every push came out mirrored. Since 0.5.0 forces come "from the west"
+  (`input/haptic.rs`), and INVERT FFB stays off by default. SDL keeps
+  that meaning on every platform; a Linux run on hardware is still to do.
 - The CRT shaders' look (x11grab under Xvfb does not capture MAME's GL
   window; the chains load without errors).
-- Real Windows hardware (only Wine).
+- Windows below 100 % volume. One Windows run was silent at
+  `-volume -2` and audible at `-volume 0` (#1). MAME 0.289 only
+  multiplies the mix by the gain (0.79 at −2 dB, `emu/sound.cpp`), and
+  the same build on Linux measured exactly that (RMS 704 against 895).
+  Since 0.5.0, full volume passes no `-volume` at all, the same as the
+  audible run.
+
+## Windows wheels
+
+A Fanatec CSL DD shows up twice on Windows, once per HID collection, and
+only one reports input. The launcher prefers the collection that takes
+force feedback; WHEEL on the WHEEL page (`wheel_device`, a device path
+from `--list-devices`) picks one by hand. Devices with no axes that share
+a model with another device are a gamepad's spare interfaces and are
+skipped (an 8BitDo pad shows up three times).
 
 ## Leaving the game
 

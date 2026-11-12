@@ -214,6 +214,47 @@ pub struct DeviceId {
     pub guid: String,
 }
 
+/// A connected wheel, as [`pick_wheel`] weighs it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WheelCandidate<'a> {
+    pub vid: u16,
+    pub pid: u16,
+    pub path: &'a str,
+    pub haptic: bool,
+}
+
+/// Which wheel to drive the car with, as an index into `wheels`:
+///
+/// 1. the one picked by hand (`chosen`, a device path), when connected;
+/// 2. otherwise among the saved profile's model (or every wheel), the
+///    first that takes force feedback, then the first at all.
+///
+/// Some wheels show up twice, once per HID collection, and only the one
+/// that takes force feedback reports input (Fanatec CSL DD on Windows).
+pub fn pick_wheel(
+    wheels: &[WheelCandidate],
+    saved: Option<&DeviceId>,
+    chosen: &str,
+) -> Option<usize> {
+    if !chosen.is_empty()
+        && let Some(i) = wheels.iter().position(|w| w.path == chosen)
+    {
+        return Some(i);
+    }
+    let same_model = |w: &WheelCandidate| saved.is_some_and(|s| (s.vid, s.pid) == (w.vid, w.pid));
+    let pool: Vec<usize> = if wheels.iter().any(same_model) {
+        (0..wheels.len())
+            .filter(|&i| same_model(&wheels[i]))
+            .collect()
+    } else {
+        (0..wheels.len()).collect()
+    };
+    pool.iter()
+        .copied()
+        .find(|&i| wheels[i].haptic)
+        .or(pool.first().copied())
+}
+
 /// Everything the setup wizard learns about a wheel; saved as `wheel.ini`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WheelProfile {
@@ -510,11 +551,13 @@ pub fn guess_pedals(initial: &DeviceState) -> (Option<PedalAxis>, Option<PedalAx
 }
 
 /// The wheel options from the menu.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WheelSettings {
     pub lock: SteeringLock,
     pub invert_accel: bool,
     pub invert_brake: bool,
+    /// The wheel picked by hand, by device path; empty picks automatically.
+    pub device: String,
 }
 
 impl Default for WheelSettings {
@@ -523,6 +566,7 @@ impl Default for WheelSettings {
             lock: SteeringLock::DEFAULT,
             invert_accel: false,
             invert_brake: false,
+            device: String::new(),
         }
     }
 }
@@ -637,6 +681,43 @@ pub fn read_pad(settings: &PadSettings, pad: &PadState) -> Cabinet {
 
 #[cfg(test)]
 mod tests {
+    fn cand(pid: u16, path: &str, haptic: bool) -> WheelCandidate<'_> {
+        WheelCandidate {
+            vid: 0x0eb7,
+            pid,
+            path,
+            haptic,
+        }
+    }
+
+    #[test]
+    fn the_collection_that_takes_force_feedback_wins() {
+        // the inert collection comes first, as on the reporter's Windows
+        let wheels = [cand(0x20, "col02", false), cand(0x20, "col01", true)];
+        assert_eq!(pick_wheel(&wheels, None, ""), Some(1));
+        let only_inert = [cand(0x20, "col02", false)];
+        assert_eq!(pick_wheel(&only_inert, None, ""), Some(0));
+        assert_eq!(pick_wheel(&[], None, ""), None);
+    }
+
+    #[test]
+    fn a_wheel_picked_by_hand_wins_while_connected() {
+        let wheels = [cand(0x20, "a", true), cand(0x20, "b", false)];
+        assert_eq!(pick_wheel(&wheels, None, "b"), Some(1));
+        assert_eq!(pick_wheel(&wheels, None, "gone"), Some(0));
+    }
+
+    #[test]
+    fn the_saved_model_comes_before_force_feedback_elsewhere() {
+        let saved = DeviceId {
+            vid: 0x0eb7,
+            pid: 0x20,
+            ..DeviceId::default()
+        };
+        let wheels = [cand(0x05, "other", true), cand(0x20, "mine", false)];
+        assert_eq!(pick_wheel(&wheels, Some(&saved), ""), Some(1));
+    }
+
     use super::*;
     use crate::pad_map::PadInput;
 

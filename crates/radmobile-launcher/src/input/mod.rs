@@ -31,6 +31,9 @@ const RESCAN_EVERY: Duration = Duration::from_millis(500);
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceInfo {
     pub id: DeviceId,
+    pub path: String,
+    /// It takes force feedback.
+    pub haptic: bool,
     pub kind: Kind,
     /// The force feedback effects found, when it has any.
     pub ffb: Option<String>,
@@ -229,35 +232,88 @@ fn run(
 fn rescan(sdl: &sdl::Sdl, st: &mut State) {
     st.haptic = None;
     st.devices.clear();
-    st.devices = (0..sdl.device_count())
+    let devices: Vec<sdl::Device> = (0..sdl.device_count())
         .filter_map(sdl::Device::open)
+        .collect();
+    let shapes: Vec<Shape> = devices
+        .iter()
+        .map(|d| Shape {
+            vid: d.id.vid,
+            pid: d.id.pid,
+            kind: d.kind,
+            axes: d.state.axes.len(),
+        })
+        .collect();
+    let spare: Vec<bool> = (0..shapes.len())
+        .map(|i| is_spare_interface(&shapes, i))
+        .collect();
+    for (d, _) in devices.iter().zip(&spare).filter(|(_, spare)| **spare) {
+        crate::log::line(&format!(
+            "input: skipped \"{}\" {:04x}:{:04x}, a spare interface of another device",
+            d.id.name, d.id.vid, d.id.pid
+        ));
+    }
+    st.devices = devices
+        .into_iter()
+        .zip(spare)
+        .filter_map(|(d, spare)| (!spare).then_some(d))
         .collect();
     for d in &st.devices {
         crate::log::line(&format!(
-            "input: {:?} \"{}\" {:04x}:{:04x} axes={} buttons={}",
+            "input: {:?} \"{}\" {:04x}:{:04x} axes={} buttons={} ffb={} path={}",
             d.kind,
             d.id.name,
             d.id.vid,
             d.id.pid,
             d.state.axes.len(),
-            d.state.buttons.len()
+            d.state.buttons.len(),
+            d.haptic,
+            d.path
         ));
     }
 }
 
-/// The wheel to use: the saved profile's model first, then any wheel.
-fn pick_wheel(st: &State) -> Option<usize> {
-    let wheels = || {
-        st.devices
+/// What [`is_spare_interface`] looks at.
+#[derive(Debug, Clone, Copy)]
+struct Shape {
+    vid: u16,
+    pid: u16,
+    kind: Kind,
+    axes: usize,
+}
+
+/// A device with no axes that SDL could not place, beside another device of
+/// the same model that has them: one of a gamepad's extra HID interfaces
+/// (an 8BitDo pad shows up three times on Windows, twice as such).
+fn is_spare_interface(devices: &[Shape], i: usize) -> bool {
+    let d = devices[i];
+    d.kind == Kind::Other
+        && d.axes == 0
+        && devices
             .iter()
             .enumerate()
-            .filter(|(_, d)| d.kind == Kind::Wheel)
-    };
+            .any(|(j, o)| j != i && (o.vid, o.pid) == (d.vid, d.pid) && o.axes > 0)
+}
+
+/// The wheel to use (see [`wheel::pick_wheel`]), as a device index.
+fn pick_wheel(st: &State) -> Option<usize> {
+    let wheels: Vec<usize> = (0..st.devices.len())
+        .filter(|&i| st.devices[i].kind == Kind::Wheel)
+        .collect();
+    let candidates: Vec<wheel::WheelCandidate> = wheels
+        .iter()
+        .map(|&i| {
+            let d = &st.devices[i];
+            wheel::WheelCandidate {
+                vid: d.id.vid,
+                pid: d.id.pid,
+                path: &d.path,
+                haptic: d.haptic,
+            }
+        })
+        .collect();
     let saved = st.saved_profile.as_ref().map(|p| &p.wheel);
-    wheels()
-        .find(|(_, d)| saved.is_some_and(|s| s.vid == d.id.vid && s.pid == d.id.pid))
-        .or_else(|| wheels().next())
-        .map(|(i, _)| i)
+    wheel::pick_wheel(&candidates, saved, &st.settings.wheel.device).map(|w| wheels[w])
 }
 
 /// The aux device of a profile: same GUID and model, or the same model.
@@ -399,6 +455,8 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
             .iter()
             .map(|d| DeviceInfo {
                 id: d.id.clone(),
+                path: d.path.clone(),
+                haptic: d.haptic,
                 kind: d.kind,
                 ffb: st
                     .haptic
@@ -542,6 +600,29 @@ impl NavTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn shape(pid: u16, kind: Kind, axes: usize) -> Shape {
+        Shape {
+            vid: 0x2dc8,
+            pid,
+            kind,
+            axes,
+        }
+    }
+
+    #[test]
+    fn a_pads_spare_interfaces_are_skipped_but_lone_button_boxes_stay() {
+        let devices = [
+            shape(0x310b, Kind::Pad, 6),
+            shape(0x310b, Kind::Other, 0),
+            shape(0x310b, Kind::Other, 0),
+            shape(0x1234, Kind::Other, 0), // a button box of its own
+        ];
+        let spare: Vec<bool> = (0..devices.len())
+            .map(|i| is_spare_interface(&devices, i))
+            .collect();
+        assert_eq!(spare, [false, true, true, false]);
+    }
 
     #[test]
     fn nav_fires_on_press_and_repeats_directions_only() {

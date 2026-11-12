@@ -41,6 +41,10 @@ STEERING LOCK  270 degrees feels like the arcade cabinet. The launcher
 FFB STRENGTH   Rad Mobile never had a steering motor; the force is made
                from the car's speed, crashes and the barriers.
 INVERT FFB     If the wheel pushes the wrong way.
+WHEEL          Which wheel to use. AUTO picks one with force feedback;
+               some wheels (Fanatec CSL DD on Windows) show up twice and
+               only one moves. If the indicators don't move, pick the
+               other #. RadMobile --list-devices shows every path.
 
 Gamepads: left stick steers, right trigger or A accelerates, left
 trigger or B brakes, X or LB lights, Y or RB wiper, Start starts, Back

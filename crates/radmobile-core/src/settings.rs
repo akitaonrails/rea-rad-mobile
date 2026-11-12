@@ -429,6 +429,11 @@ impl Settings {
                 )),
                 invert_accel: flag("invert_accel", false),
                 invert_brake: flag("invert_brake", false),
+                device: ini
+                    .get("wheel_device")
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
             },
             pad: PadSettings {
                 stick_deadzone: num("stick_deadzone", d.pad.stick_deadzone.into(), 0, 16_000)
@@ -507,6 +512,7 @@ impl Settings {
         ini.set("steer_lock", &self.wheel.lock.to_setting().to_string());
         ini.set("invert_accel", b(self.wheel.invert_accel));
         ini.set("invert_brake", b(self.wheel.invert_brake));
+        ini.set("wheel_device", &self.wheel.device);
         ini.set("stick_deadzone", &self.pad.stick_deadzone.to_string());
         ini.set("stick_linearity", &self.pad.stick_linearity.to_string());
         ini.set("trigger_deadzone", &self.pad.trigger_deadzone.to_string());
@@ -571,6 +577,7 @@ mod tests {
             wheel: WheelSettings {
                 lock: SteeringLock::Full,
                 invert_brake: true,
+                device: r"\\?\hid#vid_0eb7&pid_0020&col01#8&1d2f&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}".into(),
                 ..Default::default()
             },
             pad: PadSettings {

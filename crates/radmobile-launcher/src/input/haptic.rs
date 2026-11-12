@@ -167,12 +167,19 @@ impl Drop for Haptic {
 
 /// A long-running effect of `kind` with strength `v`: a level in −1..1 for
 /// the constant force, a coefficient in 0..1 for the conditions.
+/// SDL gives the direction a force comes *from* (SDL_haptic.h). A force
+/// from the west pushes the wheel east, so a positive level pushes right,
+/// as [`FfbOutput::constant`] means it. East (`[1, 0, 0]`) turned every
+/// force around: centring pulled away from the centre (seen on a Fanatec
+/// CSL DD on Windows).
+const FROM_WEST: [i32; 3] = [-1, 0, 0];
+
 fn effect_for(kind: u32, v: f32) -> sys::SDL_HapticEffect {
     // SAFETY: SDL_HapticEffect is plain data; zero is a valid starting point
     let mut e: sys::SDL_HapticEffect = unsafe { std::mem::zeroed() };
     let dir = sys::SDL_HapticDirection {
         type_: sys::SDL_HAPTIC_CARTESIAN as u8,
-        dir: [1, 0, 0],
+        dir: FROM_WEST,
     };
     if kind == sys::SDL_HAPTIC_CONSTANT {
         e.constant = sys::SDL_HapticConstant {
@@ -206,4 +213,19 @@ fn effect_for(kind: u32, v: f32) -> sys::SDL_HapticEffect {
         };
     }
     e
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_positive_force_comes_from_the_west_so_it_pushes_right() {
+        let e = effect_for(sys::SDL_HAPTIC_CONSTANT, 0.5);
+        // SAFETY: effect_for filled the constant variant
+        let c = unsafe { e.constant };
+        assert_eq!(c.direction.type_, sys::SDL_HAPTIC_CARTESIAN as u8);
+        assert!(c.direction.dir[0] < 0, "from the west");
+        assert!(c.level > 0);
+    }
 }

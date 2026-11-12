@@ -97,6 +97,10 @@ pub struct Device {
     pad: Option<NonNull<sys::_SDL_GameController>>,
     pub instance: i32,
     pub id: DeviceId,
+    /// The OS device path: tells apart two collections of one wheel.
+    pub path: String,
+    /// It takes force feedback.
+    pub haptic: bool,
     pub kind: Kind,
     pub initial: DeviceState,
     pub state: DeviceState,
@@ -165,6 +169,8 @@ impl Device {
                 pad,
                 instance: sys::SDL_JoystickInstanceID(j),
                 id,
+                path: cstr(sys::SDL_JoystickPath(j)),
+                haptic: sys::SDL_JoystickIsHaptic(j) == 1,
                 kind,
                 state: initial.clone(),
                 initial,

@@ -106,6 +106,7 @@ enum Item {
     Volume,
     AttractSound,
     InputDevice,
+    WheelDevice,
     SteerAssist,
     StickDeadzone,
     StickLinearity,
@@ -179,6 +180,7 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
         ],
         Screen::Wheel => vec![
             InputDevice,
+            WheelDevice,
             FfbStrength,
             FfbInvert,
             SteeringLock,
@@ -245,6 +247,7 @@ fn label(item: Item) -> &'static str {
         Volume => "MASTER VOLUME",
         AttractSound => "ATTRACT MODE SOUND",
         InputDevice => "INPUT DEVICE",
+        WheelDevice => "WHEEL",
         SteerAssist => "STICK STEERING",
         StickDeadzone => "STICK DEADZONE",
         StickLinearity => "STICK LINEARITY",
@@ -300,6 +303,9 @@ fn help(item: Item) -> &'static str {
         Volume => "Game volume.",
         AttractSound => "Play sound while the game shows its attract demo.",
         InputDevice => "Auto uses a wheel when one is connected, otherwise a gamepad.",
+        WheelDevice => {
+            "Which wheel to use. Auto prefers one with force feedback; pick another if the indicators below don't move."
+        }
         SteerAssist => {
             "Assisted: the stick moves the car across the road; let go and it keeps its line, through bends too. Arcade: the stick is the cabinet wheel, so you counter-steer."
         }
@@ -353,6 +359,35 @@ fn help(item: Item) -> &'static str {
 fn cycle<T: Copy + PartialEq>(all: &[T], cur: T, d: i32) -> T {
     let i = all.iter().position(|x| *x == cur).unwrap_or(0) as i32;
     all[(i + d).rem_euclid(all.len() as i32) as usize]
+}
+
+/// The connected wheels, in device order.
+fn wheels(snap: &Snapshot) -> impl Iterator<Item = &crate::input::DeviceInfo> {
+    snap.devices.iter().filter(|d| d.kind == Kind::Wheel)
+}
+
+/// The next WHEEL choice: automatic (empty), then each connected wheel's
+/// path. A saved wheel that is not connected stays in the cycle.
+fn next_wheel(current: &str, paths: &[&str], d: i32) -> String {
+    let mut choices = vec![""];
+    choices.extend(paths);
+    if !choices.contains(&current) {
+        choices.push(current);
+    }
+    let i = choices.iter().position(|c| *c == current).unwrap_or(0) as i32;
+    choices[(i + d).rem_euclid(choices.len() as i32) as usize].to_string()
+}
+
+/// "AUTO", or the chosen wheel's name and number among the wheels, so two
+/// collections of one wheel can be told apart.
+fn wheel_label(snap: &Snapshot, chosen: &str) -> String {
+    if chosen.is_empty() {
+        return "AUTO".into();
+    }
+    match wheels(snap).enumerate().find(|(_, d)| d.path == chosen) {
+        Some((n, d)) => format!("{} #{}", d.id.name, n + 1).to_uppercase(),
+        None => "NOT CONNECTED".into(),
+    }
 }
 
 fn step_u8(v: u8, d: i32, step: i32, lo: i32, hi: i32) -> u8 {
@@ -919,6 +954,10 @@ impl App {
             Volume => s.volume = step_u8(s.volume, dd, 5, 0, 100),
             AttractSound => s.game.attract_sound = !s.game.attract_sound,
             InputDevice => s.input = cycle(&InputMode::ALL, s.input, dd),
+            WheelDevice => {
+                let paths: Vec<&str> = wheels(&self.snapshot).map(|d| d.path.as_str()).collect();
+                s.wheel.device = next_wheel(&s.wheel.device, &paths, dd);
+            }
             SteerAssist => s.pad.steer_assist = !s.pad.steer_assist,
             StickDeadzone => {
                 s.pad.stick_deadzone =
@@ -1026,6 +1065,7 @@ impl App {
             Volume => format!("{}%", s.volume),
             AttractSound => on_off(s.game.attract_sound),
             InputDevice => s.input.label().to_uppercase(),
+            WheelDevice => wheel_label(&self.snapshot, &s.wheel.device),
             SteerAssist => steering_label(s.pad.steer_assist),
             StickDeadzone => format!("{}", s.pad.stick_deadzone),
             StickLinearity => wheel::linearity_label(s.pad.stick_linearity).to_uppercase(),
@@ -1807,6 +1847,45 @@ pub fn load(paths: &AppPaths) -> (Settings, Option<WheelProfile>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wheel_info(name: &str, path: &str) -> crate::input::DeviceInfo {
+        crate::input::DeviceInfo {
+            id: DeviceId {
+                name: name.into(),
+                ..DeviceId::default()
+            },
+            path: path.into(),
+            haptic: false,
+            kind: Kind::Wheel,
+            ffb: None,
+        }
+    }
+
+    #[test]
+    fn the_wheel_choice_cycles_auto_then_each_wheel() {
+        let paths = ["col02", "col01"];
+        assert_eq!(next_wheel("", &paths, 1), "col02");
+        assert_eq!(next_wheel("col02", &paths, 1), "col01");
+        assert_eq!(next_wheel("col01", &paths, 1), "");
+        assert_eq!(next_wheel("", &paths, -1), "col01");
+        // a saved wheel that is unplugged is not lost by cycling past it
+        assert_eq!(next_wheel("col01", &["col02"], 1), "");
+        assert_eq!(next_wheel("", &["col02"], -1), "col02");
+    }
+
+    #[test]
+    fn the_wheel_label_numbers_twin_collections() {
+        let snap = Snapshot {
+            devices: vec![
+                wheel_info("FANATEC Wheel", "col02"),
+                wheel_info("FANATEC Wheel", "col01"),
+            ],
+            ..Snapshot::default()
+        };
+        assert_eq!(wheel_label(&snap, ""), "AUTO");
+        assert_eq!(wheel_label(&snap, "col01"), "FANATEC WHEEL #2");
+        assert_eq!(wheel_label(&snap, "gone"), "NOT CONNECTED");
+    }
 
     #[test]
     fn every_menu_ends_with_back_or_quit() {

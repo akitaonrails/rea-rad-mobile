@@ -1,5 +1,16 @@
 Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 
+## Changes in 0.5.0
+
+- Force feedback pushed the wrong way: centring pulled away from the
+  centre. If you turned INVERT FFB on to fix that, turn it off again.
+- Wheels that show up twice (Fanatec CSL DD on Windows) now get the half
+  that takes force feedback, so steering works without touching the
+  settings. New **WHEEL** item on the WHEEL page to pick one by hand.
+- A gamepad's spare interfaces no longer show up as extra devices.
+- At 100 % volume MAME keeps its own volume setting (Windows was silent
+  at some lower volumes; if yours is, set 100 % and please report it).
+
 ## Changes in 0.4.0
 
 - New **ARCADE CRT** and **TRINITRON CRT** filters, after the CRT of

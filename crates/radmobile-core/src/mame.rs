@@ -137,7 +137,10 @@ pub fn args(s: &Settings, set: &str, paths: &Paths, screen: Option<Screen>) -> V
         "brightness",
         format!("{:.2}", f32::from(s.brightness) / 100.0),
     );
-    opt("volume", volume_db(s.volume).to_string());
+    // full volume is MAME's own default: leave the option out
+    if s.volume < 100 {
+        opt("volume", volume_db(s.volume).to_string());
+    }
     opt("samplerate", "48000".into());
 
     let height = s.resolution.height();
@@ -452,6 +455,21 @@ mod tests {
             assert!(script.contains(&format!("[{f}] = true")), "{script}");
         }
         assert!(script.contains("manager.machine:exit()"));
+    }
+
+    #[test]
+    fn full_volume_leaves_mames_default_alone() {
+        let full = Settings::default();
+        assert_eq!(full.volume, 100);
+        assert_eq!(value(&args(&full, "radm", &paths(), None), "-volume"), None);
+        let quieter = Settings {
+            volume: 50,
+            ..Settings::default()
+        };
+        assert_eq!(
+            value(&args(&quieter, "radm", &paths(), None), "-volume"),
+            Some("-6")
+        );
     }
 
     #[test]
