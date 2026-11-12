@@ -1,0 +1,61 @@
+name: Test report
+description: Tell us how Rad Mobile ran on your wheel, pad or PC, good or bad.
+title: "Test report: <wheel or pad> on <Windows/Linux>"
+labels: ["test report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! Reports from real wheels and PCs are the most useful help there is.
+        Never attach ROMs, EEPROM files or anything from the `roms` folder.
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version
+      description: The first line of launcher.log, or the release you downloaded.
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options: ["Windows 11", "Windows 10", "Linux", "Steam Deck / SteamOS", "Other"]
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Wheel, pedals or gamepad
+      placeholder: "Fanatec CSL DD + CSL Pedals, 8BitDo Ultimate 2…"
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What worked
+      options:
+        - label: Steering
+        - label: Accelerator and brake
+        - label: Force feedback (direction and strength felt right)
+        - label: Buttons (Start, Coin, lights, wiper, back to menu)
+        - label: The menu with the wheel or pad
+        - label: Widescreen
+        - label: CRT filters and the cabinet bezel
+        - label: Sound
+  - type: textarea
+    id: notes
+    attributes:
+      label: What didn't, or anything that felt off
+      description: What you did, what you expected, what happened.
+  - type: textarea
+    id: devices
+    attributes:
+      label: RadMobile --list-devices
+      description: Run it with everything plugged in and paste the output.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Drag in launcher.log and mame.log from the data folder (beside RadMobile, or %LOCALAPPDATA%\RadMobile / ~/.local/share/rad-mobile).

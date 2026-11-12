@@ -1,0 +1,35 @@
+name: Bug report
+description: Something is broken or wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Never attach ROMs, EEPROM files or anything from the `roms` folder.
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version and system
+      placeholder: "0.5.0 on Windows 11"
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Wheel, pedals or gamepad
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: devices
+    attributes:
+      label: RadMobile --list-devices
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Drag in launcher.log and mame.log from the data folder.

@@ -9,6 +9,8 @@ feedback. It never ships ROMs.
 
 - ROMs, EEPROM dumps, and anything copied out of them are never committed,
   embedded or published. Tests use synthetic bytes only.
+  The one exception, at the owner's request: the README screenshots in
+  `docs/screenshots/` (downscaled, taken from the owner's own ROM).
 - Everything outside this repository is read-only (the ROM folders, other
   repos, home configs). Scratch work goes in `.work/` (ignored).
 - Headless by default: tests and MAME probe runs use `-video none` or
