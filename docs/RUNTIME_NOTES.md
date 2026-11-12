@@ -2,6 +2,16 @@
 
 What has been verified running, how, and what has not.
 
+## Verified on rea-launcher-sdk (2026-11-12)
+
+| What | How | Result |
+|---|---|---|
+| Force feedback after the move onto the SDK | `scripts/dev/fake-wheel.py` held half right, `--list-devices` then the menu headless under Xvfb; 0.5.0's build and this one | Same effects uploaded (constant, damper, friction; direction 0xC000); the idle spring settles at level −3276, pushing the wheel back to the centre, in both |
+| Pad classification | `fake-pad.py`, and the same pad with a Logitech F310's ids | Xbox pad: a Pad in both. The F310 ids: a Wheel in 0.5.0, a Pad now |
+| Quit paths | The menu headless under Xvfb, then SIGINT or SIGTERM | Quits at once (SDL installs no signal handlers), no leftover processes; MAME is tied to the launcher (`spawn_tied`: PR_SET_PDEATHSIG, a kill-on-close job object), checked by the SDK's tests on Linux and under Wine. Window close / Alt+F4 not re-run since 0.5.0 |
+| Windows code under Wine | `sdk/scripts/wine-test --target x86_64-pc-windows-gnu` (workspace and `rea-launcher-native`) | Every test passes, including `--help` through the console attach and MAME's job object |
+| Second launcher | A held instance lock, then `--check-roms` | Refused with exit 5; the running launcher's files untouched |
+
 ## Verified (2026-11-10)
 
 | What | How | Result |
