@@ -1,0 +1,49 @@
+describe Accelerate: A / RT
+describe Brake: B / LT
+describe Press(Light): X / LB
+describe Press(Wiper): Y / RB
+describe Press(Start): START
+describe Press(Coin): BACK
+describe Press(Exit): GUIDE
+describe Press(Pause): -
+describe Press(Service): -
+describe Press(Test): -
+== default
+neutral: steer 0.0000 accel 0.0000 brake 0.0000 []
+stick half right: steer 0.4367 accel 0.0000 brake 0.0000 []
+stick in deadzone: steer 0.0000 accel 0.0000 brake 0.0000 []
+stick full left + dpad right: steer 1.0000 accel 0.0000 brake 0.0000 []
+both dpad: steer 0.2016 accel 0.0000 brake 0.0000 []
+triggers part way: steer 0.0000 accel 0.2709 brake 0.5911 []
+a and b: steer 0.0000 accel 1.0000 brake 1.0000 []
+buttons: steer 0.0000 accel 0.0000 brake 0.0000 [light,wiper,start]
+coin: steer 0.0000 accel 0.0000 brake 0.0000 [coin]
+back + start: steer 0.0000 accel 0.0000 brake 0.0000 [exit]
+guide + start: steer 0.0000 accel 0.0000 brake 0.0000 [exit]
+y: steer 0.0000 accel 0.0000 brake 0.0000 [wiper]
+== curvy
+neutral: steer 0.0000 accel 0.0000 brake 0.0000 []
+stick half right: steer 0.1807 accel 0.0000 brake 0.0000 []
+stick in deadzone: steer 0.0000 accel 0.0000 brake 0.0000 []
+stick full left + dpad right: steer 1.0000 accel 0.0000 brake 0.0000 []
+both dpad: steer 0.0457 accel 0.0000 brake 0.0000 []
+triggers part way: steer 0.0000 accel 0.0054 brake 0.1556 []
+a and b: steer 0.0000 accel 1.0000 brake 1.0000 []
+buttons: steer 0.0000 accel 0.0000 brake 0.0000 [light,wiper,start]
+coin: steer 0.0000 accel 0.0000 brake 0.0000 [coin]
+back + start: steer 0.0000 accel 0.0000 brake 0.0000 [exit]
+guide + start: steer 0.0000 accel 0.0000 brake 0.0000 [exit]
+y: steer 0.0000 accel 0.0000 brake 0.0000 [wiper]
+== remapped
+neutral: steer 0.0000 accel 0.0000 brake 0.0000 []
+stick half right: steer 0.4367 accel 0.0000 brake 0.0000 []
+stick in deadzone: steer 0.0000 accel 0.0000 brake 0.0000 []
+stick full left + dpad right: steer 1.0000 accel 0.0000 brake 0.0000 []
+both dpad: steer 0.2016 accel 0.0000 brake 0.0000 []
+triggers part way: steer 0.0000 accel 0.0000 brake 0.5911 []
+a and b: steer 0.0000 accel 0.0000 brake 1.0000 []
+buttons: steer 0.0000 accel 0.0000 brake 0.0000 [light,wiper,start]
+coin: steer 0.0000 accel 0.0000 brake 0.0000 [coin]
+back + start: steer 0.0000 accel 0.0000 brake 0.0000 [exit]
+guide + start: steer 0.0000 accel 0.0000 brake 0.0000 [start]
+y: steer 0.0000 accel 0.0000 brake 0.0000 [exit]

@@ -1,0 +1,12 @@
+steps 6
+     4 ms warming up
+    40 ms waiting Accelerator #0
+   244 ms pressing Accelerator #0 travel>0.5 true
+   364 ms waiting Brake #1
+   564 ms pressing Brake #1 travel>0.5 false
+   604 ms pressing Brake #1 travel>0.5 true
+   684 ms waiting Button(Light) #2
+   884 ms waiting Button(Wiper) #3
+  5884 ms waiting Button(Start) #4
+  6524 ms waiting Button(Exit) #5
+  6764 ms done Captures { gas: Some((1, PedalAxis { axis: 0, rest: -32768, peak: 31900 })), brake: Some((1, PedalAxis { axis: 1, rest: 32767, peak: -30500 })), buttons: [(Light, 0, 4), (Start, 0, 9), (Exit, 1, 0)], skipped: [Button(Wiper)] }
