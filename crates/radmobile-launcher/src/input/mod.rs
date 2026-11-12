@@ -13,10 +13,11 @@ use std::time::{Duration, Instant};
 
 use radmobile_core::assist::Assist;
 use radmobile_core::bridge::Bridge;
-use radmobile_core::controls::{Button, Cabinet};
-use radmobile_core::ffb::{FfbEngine, FfbOutput, Telemetry};
+use radmobile_core::controls::{self, Button, Cabinet};
+use radmobile_core::ffb::{self, FfbEngine, FfbOutput, Telemetry};
 use radmobile_core::settings::{InputMode, Settings};
-use radmobile_core::wheel::{self, DeviceId, DeviceState, PadState, WheelProfile};
+use radmobile_core::wheel::{self, DeviceId, DeviceShape, DeviceState, PadState, WheelProfile};
+use rea_launcher::pad::{self, PadNav};
 
 pub use sdl::Kind;
 
@@ -142,8 +143,9 @@ struct State {
     engine: FfbEngine,
     /// Steering assist memory for the race in progress.
     assist: Assist,
-    test_until: Option<Instant>,
-    nav: NavTracker,
+    /// When the menu's force feedback test began ([`ffb::test_pattern`]).
+    test_started: Option<Instant>,
+    nav: PadNav,
 }
 
 fn run(
@@ -175,8 +177,8 @@ fn run(
         last_mame_change: Instant::now(),
         engine: FfbEngine::new(),
         assist: Assist::default(),
-        test_until: None,
-        nav: NavTracker::default(),
+        test_started: None,
+        nav: PadNav::with_repeat(NAV_REPEAT_DELAY, NAV_REPEAT_EVERY),
     };
     rescan(&sdl, &mut st);
     let mut last = Instant::now();
@@ -195,9 +197,7 @@ fn run(
                     st.bridge = Some(bridge);
                 }
                 Ok(Command::Detach) => st.bridge = None,
-                Ok(Command::TestFfb) => {
-                    st.test_until = Some(Instant::now() + Duration::from_millis(1500))
-                }
+                Ok(Command::TestFfb) => st.test_started = Some(Instant::now()),
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     if let Some((_, h)) = st.haptic.as_mut() {
@@ -235,9 +235,9 @@ fn rescan(sdl: &sdl::Sdl, st: &mut State) {
     let devices: Vec<sdl::Device> = (0..sdl.device_count())
         .filter_map(sdl::Device::open)
         .collect();
-    let shapes: Vec<Shape> = devices
+    let shapes: Vec<DeviceShape> = devices
         .iter()
-        .map(|d| Shape {
+        .map(|d| DeviceShape {
             vid: d.id.vid,
             pid: d.id.pid,
             kind: d.kind,
@@ -245,7 +245,7 @@ fn rescan(sdl: &sdl::Sdl, st: &mut State) {
         })
         .collect();
     let spare: Vec<bool> = (0..shapes.len())
-        .map(|i| is_spare_interface(&shapes, i))
+        .map(|i| wheel::is_spare_interface(&shapes, i))
         .collect();
     for (d, _) in devices.iter().zip(&spare).filter(|(_, spare)| **spare) {
         crate::log::line(&format!(
@@ -273,28 +273,6 @@ fn rescan(sdl: &sdl::Sdl, st: &mut State) {
     }
 }
 
-/// What [`is_spare_interface`] looks at.
-#[derive(Debug, Clone, Copy)]
-struct Shape {
-    vid: u16,
-    pid: u16,
-    kind: Kind,
-    axes: usize,
-}
-
-/// A device with no axes that SDL could not place, beside another device of
-/// the same model that has them: one of a gamepad's extra HID interfaces
-/// (an 8BitDo pad shows up three times on Windows, twice as such).
-fn is_spare_interface(devices: &[Shape], i: usize) -> bool {
-    let d = devices[i];
-    d.kind == Kind::Other
-        && d.axes == 0
-        && devices
-            .iter()
-            .enumerate()
-            .any(|(j, o)| j != i && (o.vid, o.pid) == (d.vid, d.pid) && o.axes > 0)
-}
-
 /// The wheel to use (see [`wheel::pick_wheel`]), as a device index.
 fn pick_wheel(st: &State) -> Option<usize> {
     let wheels: Vec<usize> = (0..st.devices.len())
@@ -316,13 +294,10 @@ fn pick_wheel(st: &State) -> Option<usize> {
     wheel::pick_wheel(&candidates, saved, &st.settings.wheel.device).map(|w| wheels[w])
 }
 
-/// The aux device of a profile: same GUID and model, or the same model.
+/// The aux device of a profile (see [`wheel::find_aux`]), as a device index.
 fn find_aux(st: &State, aux: &DeviceId, wheel: usize) -> Option<usize> {
-    let candidates = || st.devices.iter().enumerate().filter(|(i, _)| *i != wheel);
-    candidates()
-        .find(|(_, d)| d.id.vid == aux.vid && d.id.pid == aux.pid && d.id.guid == aux.guid)
-        .or_else(|| candidates().find(|(_, d)| d.id.vid == aux.vid && d.id.pid == aux.pid))
-        .map(|(i, _)| i)
+    let ids: Vec<DeviceId> = st.devices.iter().map(|d| d.id.clone()).collect();
+    wheel::find_aux(&ids, aux, wheel)
 }
 
 fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot {
@@ -351,14 +326,14 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
         let d = &st.devices[w];
         match &st.saved_profile {
             Some(p) if p.wheel.vid == d.id.vid && p.wheel.pid == d.id.pid => p.clone(),
-            _ => WheelProfile::guess(d.id.clone(), &d.initial),
+            _ => wheel::guess(d.id.clone(), &d.initial),
         }
     });
 
     let telemetry = poll_telemetry(st, now);
     // only a pad in charge of the car is assisted, never one beside a wheel
     let assisted = telemetry
-        .filter(|t| t.playing && st.settings.pad.steer_assist && matches!(active, Active::Pad(_)));
+        .filter(|t| t.playing && st.settings.steer_assist && matches!(active, Active::Pad(_)));
     match &assisted {
         Some(t) => st.assist.observe(t),
         None => st.assist = Assist::default(),
@@ -391,27 +366,21 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
     }
 
     if let Some(bridge) = &st.bridge {
-        bridge.write(&cabinet.to_frame());
+        bridge.write(&controls::to_frame(&cabinet));
     }
 
     // force feedback
     let mut ffb = st
         .engine
         .update(dt, wheel_steer, telemetry, &st.settings.ffb);
-    if let Some(until) = st.test_until {
-        if now < until {
-            let left = until.duration_since(now).as_millis();
-            let push = f32::from(st.settings.ffb.strength.max(25)) / 100.0 * 0.6;
-            ffb.constant = if left > 1000 {
-                -push
-            } else if left > 500 {
-                push
-            } else {
-                0.0
-            };
-            ffb.rumble = 0.6;
-        } else {
-            st.test_until = None;
+    if let Some(started) = st.test_started {
+        let elapsed = now.saturating_duration_since(started).as_millis() as u64;
+        match ffb::test_pattern(elapsed, &st.settings.ffb) {
+            Some(test) => {
+                ffb.constant = test.constant;
+                ffb.rumble = test.rumble;
+            }
+            None => st.test_started = None,
         }
     }
     match active {
@@ -444,7 +413,12 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
     // menu navigation (only while no game runs)
     if st.bridge.is_none() {
         let input = nav_input(st, active, profile.as_ref());
-        for n in st.nav.update(input, now) {
+        for n in st
+            .nav
+            .update_at(input, now)
+            .into_iter()
+            .filter_map(menu_nav)
+        {
             let _ = nav_tx.send(n);
         }
     }
@@ -521,8 +495,9 @@ fn read_telemetry(bridge: &Bridge) -> Option<Telemetry> {
 }
 
 /// Directions and buttons that move through the menu, from every pad and
-/// from the wheel's hat and its bound buttons.
-fn nav_input(st: &State, active: Active, profile: Option<&WheelProfile>) -> [bool; 6] {
+/// from the wheel's hat and its bound buttons, as XInput bits for
+/// [`PadNav`]: the d-pad, A to confirm and B to go back.
+fn nav_input(st: &State, active: Active, profile: Option<&WheelProfile>) -> u16 {
     let mut held = [false; 6];
     for d in st.devices.iter().filter(|d| d.is_pad()) {
         let p = &d.pad_state;
@@ -548,52 +523,31 @@ fn nav_input(st: &State, active: Active, profile: Option<&WheelProfile>) -> [boo
         held[4] |= pressed(Button::Start) || pressed(Button::Light);
         held[5] |= pressed(Button::Exit) || pressed(Button::Wiper);
     }
-    held
-}
-
-/// Turns held inputs into navigation events, with key-repeat on directions.
-#[derive(Default)]
-struct NavTracker {
-    held_since: [Option<Instant>; 6],
-    last_repeat: [Option<Instant>; 6],
-}
-
-impl NavTracker {
-    const NAVS: [Nav; 6] = [
-        Nav::Up,
-        Nav::Down,
-        Nav::Left,
-        Nav::Right,
-        Nav::Confirm,
-        Nav::Back,
+    const BITS: [u16; 6] = [
+        pad::DPAD_UP,
+        pad::DPAD_DOWN,
+        pad::DPAD_LEFT,
+        pad::DPAD_RIGHT,
+        pad::A,
+        pad::B,
     ];
+    held.iter()
+        .zip(BITS)
+        .filter(|(down, _)| **down)
+        .fold(0, |bits, (_, bit)| bits | bit)
+}
 
-    fn update(&mut self, held: [bool; 6], now: Instant) -> Vec<Nav> {
-        let mut out = Vec::new();
-        for (i, &down) in held.iter().enumerate() {
-            match (down, self.held_since[i]) {
-                (true, None) => {
-                    self.held_since[i] = Some(now);
-                    self.last_repeat[i] = Some(now);
-                    out.push(Self::NAVS[i]);
-                }
-                (true, Some(since)) if i < 4 => {
-                    let last = self.last_repeat[i].unwrap_or(since);
-                    if now.duration_since(since) >= NAV_REPEAT_DELAY
-                        && now.duration_since(last) >= NAV_REPEAT_EVERY
-                    {
-                        self.last_repeat[i] = Some(now);
-                        out.push(Self::NAVS[i]);
-                    }
-                }
-                (false, _) => {
-                    self.held_since[i] = None;
-                    self.last_repeat[i] = None;
-                }
-                _ => {}
-            }
-        }
-        out
+/// The menu's steps from [`PadNav`]'s: directions repeat after
+/// [`NAV_REPEAT_DELAY`], every [`NAV_REPEAT_EVERY`]; A confirms, B goes back.
+fn menu_nav(nav: pad::Nav) -> Option<Nav> {
+    match nav {
+        pad::Nav::Up => Some(Nav::Up),
+        pad::Nav::Down => Some(Nav::Down),
+        pad::Nav::Left => Some(Nav::Left),
+        pad::Nav::Right => Some(Nav::Right),
+        pad::Nav::Press => Some(Nav::Confirm),
+        pad::Nav::Back => Some(Nav::Back),
+        pad::Nav::PreviousTab | pad::Nav::NextTab | pad::Nav::Play => None,
     }
 }
 
@@ -601,49 +555,32 @@ impl NavTracker {
 mod tests {
     use super::*;
 
-    fn shape(pid: u16, kind: Kind, axes: usize) -> Shape {
-        Shape {
-            vid: 0x2dc8,
-            pid,
-            kind,
-            axes,
-        }
-    }
-
-    #[test]
-    fn a_pads_spare_interfaces_are_skipped_but_lone_button_boxes_stay() {
-        let devices = [
-            shape(0x310b, Kind::Pad, 6),
-            shape(0x310b, Kind::Other, 0),
-            shape(0x310b, Kind::Other, 0),
-            shape(0x1234, Kind::Other, 0), // a button box of its own
-        ];
-        let spare: Vec<bool> = (0..devices.len())
-            .map(|i| is_spare_interface(&devices, i))
-            .collect();
-        assert_eq!(spare, [false, true, true, false]);
-    }
-
+    /// The menu's navigation as 0.5.0's own tracker did it: on press, and
+    /// held directions again after 400 ms, then every 120 ms.
     #[test]
     fn nav_fires_on_press_and_repeats_directions_only() {
-        let mut t = NavTracker::default();
+        let mut t = PadNav::with_repeat(NAV_REPEAT_DELAY, NAV_REPEAT_EVERY);
+        let mut update = |bits: u16, at: Instant| -> Vec<Nav> {
+            t.update_at(bits, at)
+                .into_iter()
+                .filter_map(menu_nav)
+                .collect()
+        };
         let t0 = Instant::now();
-        let down = [false, true, false, false, true, false];
-        assert_eq!(t.update(down, t0), vec![Nav::Down, Nav::Confirm]);
-        assert!(t.update(down, t0 + Duration::from_millis(100)).is_empty());
-        assert_eq!(t.update(down, t0 + NAV_REPEAT_DELAY), vec![Nav::Down]);
-        assert!(
-            t.update(down, t0 + NAV_REPEAT_DELAY + Duration::from_millis(50))
-                .is_empty()
-        );
+        let down = pad::DPAD_DOWN | pad::A;
+        assert_eq!(update(down, t0), vec![Nav::Down, Nav::Confirm]);
+        assert!(update(down, t0 + Duration::from_millis(100)).is_empty());
+        assert_eq!(update(down, t0 + NAV_REPEAT_DELAY), vec![Nav::Down]);
+        assert!(update(down, t0 + NAV_REPEAT_DELAY + Duration::from_millis(50)).is_empty());
         assert_eq!(
-            t.update(down, t0 + NAV_REPEAT_DELAY + NAV_REPEAT_EVERY),
+            update(down, t0 + NAV_REPEAT_DELAY + NAV_REPEAT_EVERY),
             vec![Nav::Down]
         );
-        assert!(t.update([false; 6], t0 + Duration::from_secs(2)).is_empty());
+        assert!(update(0, t0 + Duration::from_secs(2)).is_empty());
         assert_eq!(
-            t.update(down, t0 + Duration::from_secs(3)),
+            update(down, t0 + Duration::from_secs(3)),
             vec![Nav::Down, Nav::Confirm]
         );
+        assert_eq!(update(pad::B, t0 + Duration::from_secs(4)), vec![Nav::Back]);
     }
 }

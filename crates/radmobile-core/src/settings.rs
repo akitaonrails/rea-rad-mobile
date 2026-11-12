@@ -10,7 +10,7 @@ use crate::controls::Action;
 use crate::eeprom::GameSettings;
 use crate::ffb::FfbSettings;
 use crate::keys::{self, Keys, put};
-use crate::pad_map::PadMap;
+use crate::pad_map;
 use crate::wheel::{PadSettings, SteeringLock, WheelSettings};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,6 +314,9 @@ pub struct Settings {
     pub input: InputMode,
     pub wheel: WheelSettings,
     pub pad: PadSettings,
+    /// The pad's stick asks for an angle to the road instead of moving the
+    /// cabinet wheel directly ([`crate::assist`]).
+    pub steer_assist: bool,
     pub ffb: FfbSettings,
     /// Where to look for the ROMs besides the launcher's `roms` folder.
     pub rom_dir: Option<PathBuf>,
@@ -337,7 +340,8 @@ impl Default for Settings {
             race_time: RaceTime::Arcade,
             input: InputMode::Auto,
             wheel: WheelSettings::default(),
-            pad: PadSettings::default(),
+            pad: PadSettings::new(pad_map::layout()),
+            steer_assist: true,
             ffb: FfbSettings::default(),
             rom_dir: None,
         }
@@ -448,9 +452,9 @@ impl Settings {
                     as u8,
                 trigger_linearity: num("trigger_linearity", d.pad.trigger_linearity.into(), 0, 100)
                     as u8,
-                steer_assist: flag("steer_assist", d.pad.steer_assist),
-                map: PadMap::from_cfg(text),
+                map: pad_map::from_cfg(text),
             },
+            steer_assist: flag("steer_assist", d.steer_assist),
             ffb: FfbSettings {
                 strength: num("ffb_strength", d.ffb.strength.into(), 0, 100) as u8,
                 invert: flag("ffb_invert", d.ffb.invert),
@@ -562,8 +566,8 @@ impl Settings {
             "trigger_linearity",
             &self.pad.trigger_linearity.to_string(),
         );
-        put(&mut text, "steer_assist", b(self.pad.steer_assist));
-        for action in Action::ALL {
+        put(&mut text, "steer_assist", b(self.steer_assist));
+        for action in Action::all() {
             text = keys::lower_key_case(&text, &format!("pad_{}", action.key()));
         }
         text = self.pad.map.to_cfg(&text);
@@ -630,14 +634,14 @@ mod tests {
             },
             pad: PadSettings {
                 stick_linearity: 40,
-                steer_assist: false,
                 map: {
-                    let mut map = PadMap::default();
+                    let mut map = pad_map::layout();
                     map.assign(Action::Press(Button::Pause), PadInput::RightStick);
                     map
                 },
-                ..Default::default()
+                ..Settings::default().pad
             },
+            steer_assist: false,
             ffb: FfbSettings {
                 strength: 75,
                 invert: true,

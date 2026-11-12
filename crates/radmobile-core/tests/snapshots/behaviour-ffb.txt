@@ -68,7 +68,7 @@
   640 const -0.1475 damper 0.1473 friction 0.0200 rumble 0.0000
   650 const -0.1498 damper 0.1498 friction 0.0200 rumble 0.0000
 -- scraping the right barrier
-  660 const -0.3988 damper 0.1122 friction 0.0200 rumble 0.7975
+  660 const -0.3987 damper 0.1122 friction 0.0200 rumble 0.7975
   670 const -0.1964 damper 0.1122 friction 0.0200 rumble 0.4186
   680 const -0.2627 damper 0.1122 friction 0.0200 rumble 0.4186
   690 const -0.1609 damper 0.1122 friction 0.0200 rumble 0.4186
@@ -243,7 +243,7 @@
   640 const 0.0885 damper 0.0884 friction 0.0120 rumble 0.0000
   650 const 0.0899 damper 0.0899 friction 0.0120 rumble 0.0000
 -- scraping the right barrier
-  660 const 0.2393 damper 0.0673 friction 0.0120 rumble 0.3988
+  660 const 0.2392 damper 0.0673 friction 0.0120 rumble 0.3987
   670 const 0.1178 damper 0.0673 friction 0.0120 rumble 0.2093
   680 const 0.1576 damper 0.0673 friction 0.0120 rumble 0.2093
   690 const 0.0966 damper 0.0673 friction 0.0120 rumble 0.2093

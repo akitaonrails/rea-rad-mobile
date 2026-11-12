@@ -21,19 +21,19 @@ use rea_launcher::snapshot;
 // The few calls whose shape the SDK changes, in one place.
 
 fn guess(id: DeviceId, initial: &DeviceState) -> WheelProfile {
-    WheelProfile::guess(id, initial)
+    wheel::guess(id, initial)
 }
 
 fn actions() -> Vec<Action> {
-    Action::ALL.to_vec()
+    Action::all().collect()
 }
 
 fn full_wizard(steer_axis: usize) -> wizard::Wizard {
-    wizard::Wizard::new(steer_axis)
+    wizard::full(steer_axis)
 }
 
 fn default_pad_map() -> PadMap {
-    PadMap::default()
+    radmobile_core::pad_map::layout()
 }
 
 // ---------------------------------------------------------------- devices
