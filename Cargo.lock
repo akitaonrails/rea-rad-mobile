@@ -1089,6 +1089,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "jpeg-decoder"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
+
+[[package]]
 name = "js-sys"
 version = "0.3.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1908,6 +1914,7 @@ dependencies = [
  "radmobile-core",
  "rea-launcher",
  "rea-launcher-native",
+ "rea-launcher-ui",
  "rea-launcher-win32",
  "tempfile",
 ]
@@ -1935,6 +1942,17 @@ dependencies = [
  "rea-launcher",
  "sdl2",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "rea-launcher-ui"
+version = "0.8.0"
+source = "git+https://github.com/akitaonrails/rea-launcher-sdk?tag=v0.8.0#87a9965790f47177e5070c6ee748bb3c0ab882c6"
+dependencies = [
+ "eframe",
+ "jpeg-decoder",
+ "libc",
+ "rea-launcher",
 ]
 
 [[package]]
