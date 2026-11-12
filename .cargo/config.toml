@@ -1,0 +1,11 @@
+# The Windows build links with LLD (scripts/build-launcher.sh used to set
+# this in the environment only). GNU ld 2.47 mis-merges the per-crate
+# raw-dylib kernel32 import groups for x86_64: some import slots end up
+# outside every import descriptor and the program jumps into data on its
+# first call (rea-launcher-sdk docs/STANDARDS.md; sdk/packaging/check-lld.sh
+# checks this file). SDL2's import library comes from dist/sdl2 (pinned in
+# packaging/sdl2.pin), passed with -L by scripts/build-launcher.sh.
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]

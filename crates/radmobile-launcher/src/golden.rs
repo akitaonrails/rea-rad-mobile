@@ -2,7 +2,7 @@
 //! move onto rea-launcher-sdk (the SDK study's "Step 0"): the help text and
 //! how `settings.ini` and `wheel.ini` files are read from disk. The pure
 //! outputs (settings.ini, MAME command, wheel.ini, EEPROM…) are pinned in
-//! `radmobile-core/tests/golden.rs`.
+//! `radmobile-core/tests/snapshots.rs`.
 
 use std::path::{Path, PathBuf};
 

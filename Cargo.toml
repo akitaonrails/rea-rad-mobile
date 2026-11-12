@@ -18,6 +18,8 @@ rea-launcher = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag =
 # Windows: the console for --help/--list-devices/--check-roms, the
 # single-instance mutex and the player's dialogs.
 rea-launcher-win32 = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0" }
+# build.rs: version information and manifest in RadMobile.exe.
+rea-launcher-build = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0" }
 # Tests only: the family's contrast check for the menu's palette.
 rea-launcher-ui = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0" }
 # Native launchers only: MAME tied to the launcher (`child`), SDL wheels,
