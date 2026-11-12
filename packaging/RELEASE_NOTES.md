@@ -1,5 +1,17 @@
 Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 
+## Unreleased
+
+- Logitech and Thrustmaster **gamepads** (a Logitech F310 or F710, say)
+  are gamepads again: they were taken for a 900° steering wheel, so the
+  stick steered far too sharply and the pad layout, the steering assist
+  and menu navigation were lost.
+- A wheel that refuses force feedback is tried again every 5 seconds,
+  not hundreds of times a second (the log filled up), and gamepad rumble
+  is refreshed every 50 ms instead of every 4 ms.
+- With two gamepads connected (a Steam Deck's own controls and an
+  external pad), the steering assist no longer fights itself.
+
 ## Changes in 0.5.0
 
 - Force feedback pushed the wrong way: centring pulled away from the

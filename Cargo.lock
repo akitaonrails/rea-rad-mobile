@@ -1909,7 +1909,6 @@ dependencies = [
  "rea-launcher",
  "rea-launcher-native",
  "rea-launcher-win32",
- "sdl2",
  "tempfile",
 ]
 
