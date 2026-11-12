@@ -31,7 +31,9 @@ jobs:
   # object) is linted for its own target and run under Wine, headless
   # (rea-launcher-sdk STANDARDS: Windows code is run, not only linted).
   windows:
-    runs-on: ubuntu-latest
+    # As the SDK's Wine job: ubuntu-latest became 26.04, whose wine package
+    # keeps wineserver off PATH (/usr/lib/wine), and wine-test needs it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -54,6 +56,7 @@ jobs:
       - name: Tests under Wine
         run: |
           sdl="$PWD/dist/sdl2/$(sed -n 's/^dir=//p' packaging/sdl2.pin)"
+          export PATH="$PATH:/usr/lib/wine"
           export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=lld -L $sdl/lib"
           export WINEPATH="Z:$(printf '%s' "$PWD/dist/sdl2" | tr / '\\')"
           sdk/scripts/wine-test --target x86_64-pc-windows-gnu --locked --workspace
