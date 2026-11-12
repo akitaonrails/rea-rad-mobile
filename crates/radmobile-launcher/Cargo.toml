@@ -12,7 +12,6 @@ png = "0.18.1"
 radmobile-core = { version = "0.5.0", path = "../radmobile-core" }
 rea-launcher.workspace = true
 rea-launcher-native.workspace = true
-sdl2 = "0.38.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -3,9 +3,6 @@
 //! feedback from the telemetry MAME sends back. The menu talks to it with
 //! [`Command`]s and reads a [`Snapshot`] of what it sees.
 
-mod haptic;
-mod sdl;
-
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -16,18 +13,20 @@ use radmobile_core::bridge::Bridge;
 use radmobile_core::controls::{self, Button, Cabinet};
 use radmobile_core::ffb::{self, FfbEngine, FfbOutput, Telemetry};
 use radmobile_core::settings::{InputMode, Settings};
-use radmobile_core::wheel::{self, DeviceId, DeviceShape, DeviceState, PadState, WheelProfile};
+use radmobile_core::wheel::{self, DeviceId, DeviceState, PadState, WheelProfile};
 use rea_launcher::pad::{self, PadNav};
 
-pub use sdl::Kind;
+pub use radmobile_core::wheel::Kind;
+use rea_launcher_native::policy::HapticPolicy;
+use rea_launcher_native::sdl::{Devices, Sdl};
 
 const TICK: Duration = Duration::from_millis(4);
 /// Telemetry older than this means MAME is not reporting.
 const TELEMETRY_STALE: Duration = Duration::from_millis(500);
 const NAV_REPEAT_DELAY: Duration = Duration::from_millis(400);
 const NAV_REPEAT_EVERY: Duration = Duration::from_millis(120);
-/// Devices are rescanned at most this often after a plug or unplug.
-const RESCAN_EVERY: Duration = Duration::from_millis(500);
+/// Below this a pad's rumble is off.
+const RUMBLE_MIN: f32 = 0.02;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceInfo {
@@ -132,9 +131,9 @@ impl Drop for InputService {
     }
 }
 
-struct State {
-    devices: Vec<sdl::Device>,
-    haptic: Option<(i32, haptic::Haptic)>,
+struct State<'sdl> {
+    /// Every device, and the force feedback of the wheel in use.
+    devices: Devices<'sdl>,
     settings: Settings,
     saved_profile: Option<WheelProfile>,
     bridge: Option<Bridge>,
@@ -155,12 +154,12 @@ fn run(
     settings: Settings,
     profile: Option<WheelProfile>,
 ) {
-    let sdl = match sdl::Sdl::init() {
+    let sdl = match Sdl::init(&[]) {
         Ok(s) => s,
         Err(e) => {
             crate::log::line(&format!("input: {e}"));
             if let Ok(mut s) = shared.lock() {
-                s.error = Some(e.to_string());
+                s.error = Some(e.clone());
             }
             // keep answering commands so the menu still works without SDL
             while rx.recv().is_ok() {}
@@ -168,8 +167,7 @@ fn run(
         }
     };
     let mut st = State {
-        devices: Vec::new(),
-        haptic: None,
+        devices: Devices::new(&sdl, HapticPolicy::default()),
         settings,
         saved_profile: profile,
         bridge: None,
@@ -180,9 +178,8 @@ fn run(
         test_started: None,
         nav: PadNav::with_repeat(NAV_REPEAT_DELAY, NAV_REPEAT_EVERY),
     };
-    rescan(&sdl, &mut st);
+    log_devices(&st.devices);
     let mut last = Instant::now();
-    let mut last_rescan = Instant::now();
     loop {
         loop {
             match rx.try_recv() {
@@ -200,22 +197,16 @@ fn run(
                 Ok(Command::TestFfb) => st.test_started = Some(Instant::now()),
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    if let Some((_, h)) = st.haptic.as_mut() {
-                        h.stop();
-                    }
+                    st.devices.release_force_feedback();
                     return;
                 }
             }
         }
 
-        let changed = sdl.pump();
-        let lost = st.devices.iter().any(|d| !d.is_attached());
-        if (changed || lost) && last_rescan.elapsed() >= RESCAN_EVERY {
-            rescan(&sdl, &mut st);
-            last_rescan = Instant::now();
-        }
-        for d in &mut st.devices {
-            d.read();
+        // a plug or unplug rescans at most every 500 ms, and one inside
+        // that window waits for the next rescan instead of being lost
+        if st.devices.pump() {
+            log_devices(&st.devices);
         }
 
         let now = Instant::now();
@@ -229,36 +220,14 @@ fn run(
     }
 }
 
-fn rescan(sdl: &sdl::Sdl, st: &mut State) {
-    st.haptic = None;
-    st.devices.clear();
-    let devices: Vec<sdl::Device> = (0..sdl.device_count())
-        .filter_map(sdl::Device::open)
-        .collect();
-    let shapes: Vec<DeviceShape> = devices
-        .iter()
-        .map(|d| DeviceShape {
-            vid: d.id.vid,
-            pid: d.id.pid,
-            kind: d.kind,
-            axes: d.state.axes.len(),
-        })
-        .collect();
-    let spare: Vec<bool> = (0..shapes.len())
-        .map(|i| wheel::is_spare_interface(&shapes, i))
-        .collect();
-    for (d, _) in devices.iter().zip(&spare).filter(|(_, spare)| **spare) {
+fn log_devices(devices: &Devices) {
+    for d in devices.skipped() {
         crate::log::line(&format!(
             "input: skipped \"{}\" {:04x}:{:04x}, a spare interface of another device",
-            d.id.name, d.id.vid, d.id.pid
+            d.name, d.vid, d.pid
         ));
     }
-    st.devices = devices
-        .into_iter()
-        .zip(spare)
-        .filter_map(|(d, spare)| (!spare).then_some(d))
-        .collect();
-    for d in &st.devices {
+    for d in devices.list() {
         crate::log::line(&format!(
             "input: {:?} \"{}\" {:04x}:{:04x} axes={} buttons={} ffb={} path={}",
             d.kind,
@@ -275,13 +244,13 @@ fn rescan(sdl: &sdl::Sdl, st: &mut State) {
 
 /// The wheel to use (see [`wheel::pick_wheel`]), as a device index.
 fn pick_wheel(st: &State) -> Option<usize> {
-    let wheels: Vec<usize> = (0..st.devices.len())
-        .filter(|&i| st.devices[i].kind == Kind::Wheel)
+    let wheels: Vec<usize> = (0..st.devices.list().len())
+        .filter(|&i| st.devices.list()[i].kind == Kind::Wheel)
         .collect();
     let candidates: Vec<wheel::WheelCandidate> = wheels
         .iter()
         .map(|&i| {
-            let d = &st.devices[i];
+            let d = &st.devices.list()[i];
             wheel::WheelCandidate {
                 vid: d.id.vid,
                 pid: d.id.pid,
@@ -296,13 +265,13 @@ fn pick_wheel(st: &State) -> Option<usize> {
 
 /// The aux device of a profile (see [`wheel::find_aux`]), as a device index.
 fn find_aux(st: &State, aux: &DeviceId, wheel: usize) -> Option<usize> {
-    let ids: Vec<DeviceId> = st.devices.iter().map(|d| d.id.clone()).collect();
+    let ids: Vec<DeviceId> = st.devices.list().iter().map(|d| d.id.clone()).collect();
     wheel::find_aux(&ids, aux, wheel)
 }
 
 fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot {
     let wheel = pick_wheel(st);
-    let pad = st.devices.iter().position(|d| d.is_pad());
+    let pad = st.devices.list().iter().position(|d| d.pad.is_some());
     let (active, wheel_missing) = match st.settings.input {
         InputMode::Auto => (
             wheel
@@ -323,7 +292,7 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
 
     // the profile for the wheel in use: the saved one when it is this model
     let profile = wheel.map(|w| {
-        let d = &st.devices[w];
+        let d = &st.devices.list()[w];
         match &st.saved_profile {
             Some(p) if p.wheel.vid == d.id.vid && p.wheel.pid == d.id.pid => p.clone(),
             _ => wheel::guess(d.id.clone(), &d.initial),
@@ -346,22 +315,26 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
             .aux
             .as_ref()
             .and_then(|a| find_aux(st, a, w))
-            .map(|i| &st.devices[i].state);
-        cabinet = p.read(&st.settings.wheel, &st.devices[w].state, aux);
+            .map(|i| &st.devices.list()[i].state);
+        cabinet = p.read(&st.settings.wheel, &st.devices.list()[w].state, aux);
         wheel_steer = cabinet.steer;
     }
-    for d in st.devices.iter().filter(|d| d.is_pad()) {
-        let use_pad = match active {
-            Active::Pad(_) => true,
-            Active::Wheel(_) => st.settings.input == InputMode::Auto,
-            Active::None => false,
-        };
-        if use_pad {
-            let mut pad = wheel::read_pad(&st.settings.pad, &d.pad_state);
-            if let Some(t) = &assisted {
-                pad.steer = st.assist.steer(pad.steer, t);
-            }
-            cabinet = cabinet.merge(pad);
+    let use_pads = match active {
+        Active::Pad(_) => true,
+        Active::Wheel(_) => st.settings.input == InputMode::Auto,
+        Active::None => false,
+    };
+    if use_pads {
+        let pads: Vec<Cabinet> = st
+            .devices
+            .list()
+            .iter()
+            .filter_map(|d| d.pad)
+            .map(|p| wheel::read_pad(&st.settings.pad, &p))
+            .collect();
+        let assist = assisted.as_ref().map(|t| (&mut st.assist, t));
+        if let Some(pads) = merge_pads(&pads, assist) {
+            cabinet = cabinet.merge(pads);
         }
     }
 
@@ -385,26 +358,21 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
     }
     match active {
         Active::Wheel(w) => {
-            let instance = st.devices[w].instance;
-            if st.haptic.as_ref().is_none_or(|(i, _)| *i != instance) {
-                st.haptic = haptic::Haptic::open(st.devices[w].raw()).map(|h| {
-                    crate::log::line(&format!(
-                        "ffb: {} on \"{}\"",
-                        h.description, st.devices[w].id.name
-                    ));
-                    (instance, h)
-                });
-            }
-            if let Some((_, h)) = st.haptic.as_mut() {
-                h.apply(&ffb);
+            // opened once per wheel; a refusal is retried every 5 s, not
+            // every tick (SDK study §5.3)
+            if let Some(line) = st.devices.force_feedback(w, &ffb) {
+                crate::log::line(&line);
             }
         }
         Active::Pad(p) => {
-            if let Some((_, mut h)) = st.haptic.take() {
-                h.stop();
-            }
-            if ffb.rumble > 0.02 {
-                st.devices[p].rumble(ffb.rumble, 60);
+            st.devices.release_force_feedback();
+            let rumble = if ffb.rumble > RUMBLE_MIN {
+                ffb.rumble
+            } else {
+                0.0
+            };
+            if let Some(pad) = st.devices.get_mut(p) {
+                pad.rumble(rumble);
             }
         }
         Active::None => {}
@@ -426,26 +394,19 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
     Snapshot {
         devices: st
             .devices
+            .list()
             .iter()
-            .map(|d| DeviceInfo {
+            .enumerate()
+            .map(|(i, d)| DeviceInfo {
                 id: d.id.clone(),
                 path: d.path.clone(),
                 haptic: d.haptic,
                 kind: d.kind,
-                ffb: st
-                    .haptic
-                    .as_ref()
-                    .filter(|(i, _)| *i == d.instance)
-                    .map(|(_, h)| h.description.clone()),
+                ffb: st.devices.force_feedback_description(i).map(String::from),
             })
             .collect(),
-        states: st.devices.iter().map(|d| d.state.clone()).collect(),
-        pads: st
-            .devices
-            .iter()
-            .filter(|d| d.is_pad())
-            .map(|d| d.pad_state)
-            .collect(),
+        states: st.devices.list().iter().map(|d| d.state.clone()).collect(),
+        pads: st.devices.list().iter().filter_map(|d| d.pad).collect(),
         active,
         wheel_missing,
         profile,
@@ -494,13 +455,25 @@ fn read_telemetry(bridge: &Bridge) -> Option<Telemetry> {
     found.then_some(t)
 }
 
+/// Every pad in use as one: the stronger input wins ([`Cabinet::merge`]),
+/// then the steering assist, once (SDK study §5.5: assisting each pad on
+/// its own let an idle second pad, a Steam Deck's own controls beside an
+/// external pad, reset what the assist held for the one in use). `None`
+/// without pads.
+fn merge_pads(pads: &[Cabinet], assisted: Option<(&mut Assist, &Telemetry)>) -> Option<Cabinet> {
+    let mut merged = pads.iter().copied().reduce(Cabinet::merge)?;
+    if let Some((assist, t)) = assisted {
+        merged.steer = assist.steer(merged.steer, t);
+    }
+    Some(merged)
+}
+
 /// Directions and buttons that move through the menu, from every pad and
 /// from the wheel's hat and its bound buttons, as XInput bits for
 /// [`PadNav`]: the d-pad, A to confirm and B to go back.
 fn nav_input(st: &State, active: Active, profile: Option<&WheelProfile>) -> u16 {
     let mut held = [false; 6];
-    for d in st.devices.iter().filter(|d| d.is_pad()) {
-        let p = &d.pad_state;
+    for p in st.devices.list().iter().filter_map(|d| d.pad.as_ref()) {
         held[0] |= p.dpad_up || p.left_y < -20_000;
         held[1] |= p.dpad_down || p.left_y > 20_000;
         held[2] |= p.dpad_left || p.left_x < -20_000;
@@ -509,8 +482,8 @@ fn nav_input(st: &State, active: Active, profile: Option<&WheelProfile>) -> u16 
         held[5] |= p.b || p.back;
     }
     if let (Active::Wheel(w), Some(p)) = (active, profile) {
-        let d = &st.devices[w];
-        let (hx, hy) = d.hat();
+        let d = &st.devices.list()[w];
+        let (hx, hy) = d.hat;
         held[0] |= hy < 0;
         held[1] |= hy > 0;
         held[2] |= hx < 0;
@@ -582,5 +555,36 @@ mod tests {
             vec![Nav::Down, Nav::Confirm]
         );
         assert_eq!(update(pad::B, t0 + Duration::from_secs(4)), vec![Nav::Back]);
+    }
+
+    /// SDK study §5.5: an idle second pad changes nothing, the assist
+    /// steers as for the one pad in use.
+    #[test]
+    fn an_idle_second_pad_does_not_fight_the_assist() {
+        let steering = |steer| Cabinet {
+            steer,
+            accel: 1.0,
+            ..Cabinet::default()
+        };
+        let idle = Cabinet::default();
+        let mut alone = Assist::default();
+        let mut beside_idle = Assist::default();
+        for frame in 0..240u32 {
+            let t = Telemetry {
+                speed: 300.0,
+                lateral: (frame as f32 * 1.5).sin() * 200.0,
+                heading: 0.2,
+                playing: true,
+                frame,
+                ..Telemetry::default()
+            };
+            alone.observe(&t);
+            beside_idle.observe(&t);
+            let stick = if frame % 60 < 30 { 0.0 } else { 0.8 };
+            let one = merge_pads(&[steering(stick)], Some((&mut alone, &t)));
+            let two = merge_pads(&[steering(stick), idle], Some((&mut beside_idle, &t)));
+            assert_eq!(one, two, "frame {frame}");
+        }
+        assert_eq!(merge_pads(&[], None), None);
     }
 }
