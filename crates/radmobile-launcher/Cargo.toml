@@ -14,6 +14,8 @@ rea-launcher.workspace = true
 rea-launcher-native.workspace = true
 
 [dev-dependencies]
+# theme::contrast for the menu palette test; not in the shipped binary.
+rea-launcher-ui.workspace = true
 tempfile = "3.27.0"
 
 [target."cfg(windows)".dependencies]

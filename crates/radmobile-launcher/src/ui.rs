@@ -1987,4 +1987,75 @@ mod tests {
         assert!(items(Screen::Controller, &s).contains(&Item::Open(Screen::PadMap)));
         assert!(items(Screen::Wheel, &s).contains(&Item::Open(Screen::WheelMap)));
     }
+
+    /// The menu's colours meet the family's contrast rule (WCAG: 4.5:1
+    /// for text, 3:1 for the large logo) on the worst background each
+    /// can land on, so no colour here may change without passing it. The
+    /// translucent bars are composited over white for the header and the
+    /// content panel (anything the backdrop or the drawn sky can show),
+    /// and over the brightest the backdrop gets in its bottom sixth, or
+    /// the drawn sky's grid, for the status bar (the backdrop is dimmed
+    /// toward the bottom; the bar covers at most that much of it).
+    #[test]
+    fn the_palette_keeps_text_readable() {
+        use rea_launcher_ui::theme::contrast;
+        let over = |fill: Color32, bg: Color32| {
+            let a = f32::from(fill.a()) / 255.0;
+            let mix = |f: u8, b: u8| (f32::from(f) + (1.0 - a) * f32::from(b)).round() as u8;
+            Color32::from_rgb(
+                mix(fill.r(), bg.r()),
+                mix(fill.g(), bg.g()),
+                mix(fill.b(), bg.b()),
+            )
+        };
+        // the backdrop made from the brightest scene there is
+        let white = art::Image {
+            width: art::GAME_WIDTH,
+            height: art::GAME_HEIGHT,
+            // white and black columns: a "scene", at full brightness
+            rgba: (0..art::GAME_WIDTH * art::GAME_HEIGHT)
+                .flat_map(|i| {
+                    let v = if i % 2 == 0 { 255 } else { 0 };
+                    [v, v, v, 255]
+                })
+                .collect(),
+        };
+        let backdrop = art::backdrop(&white).expect("a scene");
+        let bottom_rows = backdrop.height * 84 / 100..backdrop.height;
+        let brightest = bottom_rows
+            .flat_map(|y| (0..backdrop.width).map(move |x| (x, y)))
+            .map(|(x, y)| {
+                let [r, g, b, _] = backdrop.pixel(x, y);
+                Color32::from_rgb(r, g, b)
+            })
+            .chain([GRID])
+            .max_by(|a, b| contrast(*a, Color32::BLACK).total_cmp(&contrast(*b, Color32::BLACK)))
+            .unwrap();
+        let header = over(Color32::from_black_alpha(150), Color32::WHITE);
+        let panel = over(PANEL, Color32::WHITE);
+        let status = over(Color32::from_black_alpha(170), brightest);
+        let checks = [
+            ("RAD logo on the header", CHROME, header, 3.0),
+            ("MOBILE logo on the header", GOLD, header, 3.0),
+            ("title on the header", TEXT, header, 4.5),
+            ("item on the panel", TEXT, panel, 4.5),
+            ("value on the panel", DIM, panel, 4.5),
+            ("gold on the panel", GOLD, panel, 4.5),
+            ("ok on the panel", OK, panel, 4.5),
+            ("error on the panel", BAD, panel, 4.5),
+            ("selected item", ON_SELECT, SELECT, 4.5),
+            ("help on the status bar", TEXT, status, 4.5),
+            ("hint on the status bar", DIM, status, 4.5),
+            ("warning on the status bar", GOLD, status, 4.5),
+            ("ok on the status bar", OK, status, 4.5),
+            ("error on the status bar", BAD, status, 4.5),
+        ];
+        let failing: Vec<String> = checks
+            .iter()
+            .map(|(what, fg, bg, least)| (what, contrast(*fg, *bg), least))
+            .filter(|(_, ratio, least)| ratio < *least)
+            .map(|(what, ratio, least)| format!("{what}: {ratio:.2} < {least}"))
+            .collect();
+        assert!(failing.is_empty(), "{failing:#?}");
+    }
 }
