@@ -11,6 +11,7 @@ mod golden;
 mod input;
 mod log;
 mod paths;
+mod platform;
 mod session;
 mod store;
 mod ui;
@@ -93,8 +94,22 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Cli, String> {
     Ok(cli)
 }
 
+impl Cli {
+    fn run(&self) -> platform::Run {
+        if self.check_roms || self.print_mame || self.list_devices {
+            platform::Run::Command
+        } else if self.play {
+            platform::Run::Play
+        } else {
+            platform::Run::Menu
+        }
+    }
+}
+
 fn main() {
-    let cli = match parse(std::env::args().skip(1)) {
+    let parsed = parse(std::env::args().skip(1));
+    platform::attach_console(parsed.as_ref().map_or(platform::Run::Command, Cli::run));
+    let cli = match parsed {
         Ok(c) => c,
         Err(e) => {
             if !e.is_empty() {
@@ -103,6 +118,12 @@ fn main() {
             print!("{USAGE}");
             std::process::exit(if e.is_empty() { 0 } else { 2 });
         }
+    };
+    // before the log: a refused second start must not touch the running
+    // launcher's launcher.log
+    let _instance = match platform::single_instance(cli.run()) {
+        Ok(guard) => guard,
+        Err(code) => std::process::exit(code),
     };
     let paths = AppPaths::detect(cli.data.clone());
     let _ = std::fs::create_dir_all(&paths.data);
@@ -241,7 +262,7 @@ fn menu(
         !windowed && screenshot.is_none() && loaded.settings.display == Display::Fullscreen;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Rad Mobile")
+            .with_title(platform::TITLE)
             .with_app_id("rad-mobile")
             .with_inner_size([1280.0, 720.0])
             .with_min_inner_size([640.0, 360.0])
@@ -292,5 +313,13 @@ mod tests {
         assert!(args(&["--bogus"]).unwrap_err().contains("--bogus"));
         let none = args(&[]).unwrap();
         assert!(!none.play && none.data.is_none());
+        // what kind of run: where messages go, and the single instance
+        use platform::Run;
+        assert_eq!(none.run(), Run::Menu);
+        assert_eq!(args(&["--windowed"]).unwrap().run(), Run::Menu);
+        assert_eq!(args(&["--play"]).unwrap().run(), Run::Play);
+        for flag in ["--check-roms", "--list-devices", "--print-mame-command"] {
+            assert_eq!(args(&["--play", flag]).unwrap().run(), Run::Command);
+        }
     }
 }
