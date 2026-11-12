@@ -65,7 +65,9 @@ ASPECT RATIO   4:3 Original, Stretch, or True widescreen: the game draws
                more of the world on both sides (experimental: objects
                can appear at the very edge of the screen).
 CABINET BEZEL  4:3 only: the picture inside an arcade monitor's frame,
-               with cabinet art filling the rest of the screen.
+               with art after the upright cabinet around it: stars and
+               stripes, a star roundel, and the control panel's sunset
+               bars with its START, WIPER and LIGHT buttons.
 FILTER         Sharp, Smooth, Arcade CRT, Trinitron CRT, CRT, CRT
                Deluxe. Arcade and Trinitron follow Wanszai's ports
                (scanlines, phosphor mask, glow); CRT CURVATURE bends

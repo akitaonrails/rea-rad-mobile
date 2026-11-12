@@ -12,7 +12,7 @@ support with force feedback.
 
 | | |
 |---|---|
-| Video | Desktop, 1080p, 1440p or 4K rendering; fullscreen or window; 4:3, stretch, or **true widescreen** (the game draws more of the road at 16:9, 16:10 or ~21:9); Sharp and Smooth, Wanszai-style Arcade and Trinitron CRTs (curved or flat), CRT and CRT Deluxe; a cabinet bezel around the 4:3 picture; brightness; vsync |
+| Video | Desktop, 1080p, 1440p or 4K rendering; fullscreen or window; 4:3, stretch, or **true widescreen** (the game draws more of the road at 16:9, 16:10 or ~21:9); Sharp and Smooth, Wanszai-style Arcade and Trinitron CRTs (curved or flat), CRT and CRT Deluxe; a cabinet bezel around the 4:3 picture, after the upright cabinet's stars-and-stripes art; brightness; vsync |
 | Wheels | Logitech, Thrustmaster, Fanatec (CSL DD, CSL Elite…), MOZA and generic wheels; steering lock (180–900°, Full; 270° default) computed from the wheel's rotation; separate pedal devices; a setup wizard for pedals and buttons and a WHEEL BUTTONS page to remap any one of them; pedal calibration and invert |
 | Force feedback | Synthetic, from the car's state read out of the game: speed-dependent centring and damping, barrier scrape, crash jolts; strength and invert; Wanszai's effect keepalive; gamepad rumble |
 | Gamepads | Assisted stick steering (the stick moves the car across the road; centred, it follows the road through bends) or arcade steering; stick and trigger deadzone and curve (Linear … Cubic); every button and trigger remappable (GAMEPAD BUTTONS) |

@@ -126,12 +126,30 @@ pub struct ScreenRect {
 }
 
 /// The 4:3 picture's share of the bezel's height.
-const SCREEN_SHARE: f32 = 0.86;
+const SCREEN_SHARE: f32 = 0.82;
+/// Space above the picture, as a share of the height; the rest of the
+/// spare height goes below, to the control panel.
+const TOP_SHARE: f32 = 0.05;
+
+/// The cabinet's own colours, after the upright Rad Mobile cabinet: flag
+/// red, white and blue sides, and a control panel with sunset bars.
+mod cab {
+    pub const RED: [u8; 3] = [0xc4, 0x1e, 0x2a];
+    pub const WHITE: [u8; 3] = [0xf2, 0xef, 0xe6];
+    pub const BLUE: [u8; 3] = [0x1b, 0x2c, 0x86];
+    pub const BLUE_LIGHT: [u8; 3] = [0x2f, 0x52, 0xb8];
+    pub const PLASTIC: [u8; 3] = [0x0b, 0x0a, 0x10];
+    pub const PANEL: [u8; 3] = [0xd6, 0xd8, 0xe0];
+    pub const DEEP_RED: [u8; 3] = [0x8e, 0x12, 0x1c];
+}
 
 /// The cabinet around the 4:3 picture, `width` × `height` (the player's
-/// screen shape): a dark cabinet with speed stripes in the title screen's
-/// colours on both sides, a glossy black monitor frame with a chrome lip,
-/// and a transparent, round-cornered hole where the picture shows.
+/// screen shape), in the spirit of the upright Rad Mobile cabinet: stars
+/// and stripes sweeping down both sides with a star roundel holding a
+/// chrome steering wheel, a glossy black monitor surround with red and
+/// blue pinstripes and a chrome lip, and below it the control panel's
+/// sunset bars. Drawn here, shape by shape: nothing is copied from the
+/// cabinet's artwork, and there are no logos.
 pub fn bezel(width: u32, height: u32) -> (Image, ScreenRect) {
     let (w, h) = (width as f32, height as f32);
     // even sizes keep the hole centred on whole pixels
@@ -140,35 +158,16 @@ pub fn bezel(width: u32, height: u32) -> (Image, ScreenRect) {
     let sw = even(sh * 4.0 / 3.0).min(w);
     let screen = ScreenRect {
         x: (w - sw) / 2.0,
-        y: (h - sh) / 2.0,
+        y: even(h * TOP_SHARE),
         width: sw,
         height: sh,
     };
-    let frame = h * 0.035;
-    let corner = h * 0.025;
-    let (cx, cy) = (screen.x + sw / 2.0, screen.y + sh / 2.0);
+    let cab = Cabinet::new(w, h, screen);
     let mut img = Image::new(width, height);
     for py in 0..height {
         for px in 0..width {
             let (x, y) = (px as f32 + 0.5, py as f32 + 0.5);
-            let hole = round_rect(x - cx, y - cy, sw / 2.0, sh / 2.0, corner);
-            let outer = round_rect(
-                x - cx,
-                y - cy,
-                sw / 2.0 + frame,
-                sh / 2.0 + frame,
-                corner + frame,
-            );
-            let c = if outer < 0.0 {
-                monitor_frame(
-                    hole,
-                    outer,
-                    frame,
-                    (y - screen.y + frame) / (sh + 2.0 * frame),
-                )
-            } else {
-                cabinet(x, y, w, h, outer, frame)
-            };
+            let (c, hole) = cab.paint(x, y);
             // anti-aliased edge of the hole
             let alpha = (hole + 0.5).clamp(0.0, 1.0);
             let [r, g, b] = c;
@@ -176,6 +175,243 @@ pub fn bezel(width: u32, height: u32) -> (Image, ScreenRect) {
         }
     }
     (img, screen)
+}
+
+/// The bezel's measurements, worked out once.
+struct Cabinet {
+    w: f32,
+    h: f32,
+    screen: ScreenRect,
+    centre: (f32, f32),
+    frame: f32,
+    corner: f32,
+    /// Where the control panel starts.
+    panel_top: f32,
+    /// The side art's width, from the outer edge to the monitor surround.
+    side: f32,
+    /// The roundel's centre on the side (distance from the outer edge, y)
+    /// and radius.
+    roundel: (f32, f32, f32),
+}
+
+/// How much the side stripes fall per unit they run outward.
+const STRIPE_SLOPE: f32 = 0.7;
+
+impl Cabinet {
+    fn new(w: f32, h: f32, screen: ScreenRect) -> Self {
+        let frame = h * 0.042;
+        let side = (screen.x - frame).max(1.0);
+        let panel_top = screen.y + screen.height + frame + h * 0.012;
+        let radius = (side * 0.40).min(h * 0.15);
+        Cabinet {
+            w,
+            h,
+            screen,
+            centre: (
+                screen.x + screen.width / 2.0,
+                screen.y + screen.height / 2.0,
+            ),
+            frame,
+            corner: h * 0.025,
+            panel_top,
+            side,
+            roundel: (side * 0.5, screen.y + screen.height * 0.64, radius),
+        }
+    }
+
+    /// The colour at (x, y), and the signed distance to the picture's
+    /// hole (negative inside).
+    fn paint(&self, x: f32, y: f32) -> ([u8; 3], f32) {
+        let (sw, sh) = (self.screen.width / 2.0, self.screen.height / 2.0);
+        let (dx, dy) = (x - self.centre.0, y - self.centre.1);
+        let hole = round_rect(dx, dy, sw, sh, self.corner);
+        let f = self.frame;
+        let outer = round_rect(dx, dy, sw + f, sh + f, self.corner + f);
+        let c = if outer < 0.0 {
+            self.monitor_frame(hole, outer, y)
+        } else if y >= self.panel_top {
+            self.panel(x, y)
+        } else {
+            let c = self.side_art(x.min(self.w - x), y);
+            // the surround casts a soft shadow
+            scale(c, 1.0 - (-outer / (f * 1.2)).exp() * 0.6)
+        };
+        (c, hole)
+    }
+
+    /// Black gloss, lighter toward the top, with a red and a blue
+    /// pinstripe and a chrome lip at the glass.
+    fn monitor_frame(&self, hole: f32, outer: f32, y: f32) -> [u8; 3] {
+        let f = self.frame;
+        let down = ((y - self.screen.y + f) / (self.screen.height + 2.0 * f)).clamp(0.0, 1.0);
+        let gloss = (1.0 - down).powi(3) * 0.45 + (1.0 + outer / f).clamp(0.0, 1.0) * 0.12;
+        let mut c = mix(cab::PLASTIC, [0x34, 0x30, 0x40], gloss);
+        let line = (f * 0.07).max(1.0);
+        c = over(c, cab::RED, band(-outer, f * 0.22, line));
+        c = over(
+            c,
+            cab::BLUE_LIGHT,
+            band(-outer, f * 0.22 + line * 2.2, line),
+        );
+        if hole < 2.5 {
+            c = mix(scale(palette::CHROME, 0.8), palette::STEEL, down);
+        }
+        c
+    }
+
+    /// Stars and stripes, `sx` from the nearer outer edge.
+    fn side_art(&self, sx: f32, y: f32) -> [u8; 3] {
+        let pitch = self.h * 0.05;
+        let norm = (1.0 + STRIPE_SLOPE * STRIPE_SLOPE).sqrt();
+        let t = (y + STRIPE_SLOPE * (self.side - sx)) / pitch;
+        let canton_end = 4.5 + 3.0 * self.side / self.h;
+        // red and white stripes, edges anti-aliased
+        let into = (t.fract() - 0.5).abs(); // 0.5 at an edge
+        let edge = (0.5 - into) * pitch / norm;
+        let (this, other) = if (t.floor() as i64) % 2 == 0 {
+            (cab::RED, cab::WHITE)
+        } else {
+            (cab::WHITE, cab::RED)
+        };
+        let mut c = mix(other, this, (edge + 0.5).clamp(0.0, 1.0));
+        // the blue field with its stars, above the stripes
+        let canton = (canton_end - t) * pitch / norm;
+        if canton > -1.0 {
+            let mut blue = cab::BLUE;
+            let star = self.star_field(sx, y, |cx, cy| {
+                (canton_end - (cy + STRIPE_SLOPE * (self.side - cx)) / pitch) * pitch / norm
+            });
+            blue = over(blue, cab::WHITE, star);
+            c = over(c, blue, (canton + 0.5).clamp(0.0, 1.0));
+        }
+        // a sheen sweeping across, and darker toward the outer edge
+        let sheen = (-((t - canton_end - 3.0) / 1.6).powi(2)).exp() * 0.10;
+        c = mix(c, [0xff, 0xff, 0xff], sheen);
+        c = scale(c, 0.72 + 0.28 * (sx / self.side).clamp(0.0, 1.0).sqrt());
+        self.roundel_over(c, sx, y)
+    }
+
+    /// Coverage of the canton's staggered white stars at (sx, y); only
+    /// stars that sit wholly inside the field (`room`: how far a point is
+    /// inside it).
+    fn star_field(&self, sx: f32, y: f32, room: impl Fn(f32, f32) -> f32) -> f32 {
+        let gap = (self.side * 0.2).clamp(self.h * 0.035, self.h * 0.06);
+        let r = gap * 0.3;
+        let row = (y / gap).floor();
+        let shift = if (row as i64) % 2 == 0 { 0.5 } else { 0.0 };
+        let col = (sx / gap - shift).floor();
+        let (cx, cy) = ((col + shift + 0.5) * gap, (row + 0.5) * gap);
+        if room(cx, cy) < r * 1.6 || cx + r > self.side || cx - r < 0.0 {
+            return 0.0;
+        }
+        coverage(star5(sx - cx, y - cy, r))
+    }
+
+    /// The roundel: a white rim, a blue ring of stars, a red disc, and a
+    /// chrome hub holding a black steering wheel.
+    fn roundel_over(&self, mut c: [u8; 3], sx: f32, y: f32) -> [u8; 3] {
+        let (rx, ry, r) = self.roundel;
+        let (x, y) = (sx - rx, y - ry);
+        let d = x.hypot(y);
+        if d > r * 1.12 {
+            return c;
+        }
+        c = over(c, [0x08, 0x06, 0x10], coverage(d - r * 1.10) * 0.5); // shadow
+        c = over(c, cab::WHITE, coverage(d - r * 1.06));
+        c = over(c, cab::BLUE, coverage(d - r));
+        let angle = y.atan2(x);
+        let step = std::f32::consts::TAU / 12.0;
+        let a = (angle / step).round() * step;
+        let (scx, scy) = (a.cos() * r * 0.84, a.sin() * r * 0.84);
+        c = over(c, cab::WHITE, coverage(star5(x - scx, y - scy, r * 0.10)));
+        c = over(c, cab::WHITE, coverage(d - r * 0.70));
+        c = over(c, cab::RED, coverage(d - r * 0.66));
+        c = over(c, cab::DEEP_RED, band(d, r * 0.50, r * 0.012) * 0.8);
+        // the chrome hub, lit from the top left
+        let lit = ((-x - y) / (r * 0.9) * 0.5 + 0.5).clamp(0.0, 1.0);
+        let chrome = mix(palette::STEEL, palette::CHROME, lit);
+        c = over(c, chrome, coverage(d - r * 0.46));
+        // the wheel: rim, hub and three spokes
+        let rim = (d - r * 0.33).abs() - r * 0.045;
+        let hub = d - r * 0.08;
+        let spoke =
+            |ax: f32, ay: f32| segment(x, y, 0.0, 0.0, ax * r * 0.33, ay * r * 0.33) - r * 0.03;
+        let spokes = spoke(-1.0, 0.0).min(spoke(1.0, 0.0)).min(spoke(0.0, 1.0));
+        let wheel = rim.min(hub).min(spokes);
+        over(c, [0x14, 0x14, 0x1a], coverage(wheel))
+    }
+
+    /// The control panel: white with a chrome top lip, sunset bars on both
+    /// sides and a blue plate in the middle, where the wheel sits.
+    fn panel(&self, x: f32, y: f32) -> [u8; 3] {
+        let height = (self.h - self.panel_top).max(1.0);
+        let v = (y - self.panel_top) / height;
+        let mut c = mix(cab::PANEL, scale(cab::PANEL, 0.78), v);
+        const BARS: [([u8; 3], f32, f32); 4] = [
+            (palette::GOLD, 0.16, 0.24),
+            (palette::ORANGE, 0.31, 0.42),
+            (cab::RED, 0.50, 0.65),
+            (cab::DEEP_RED, 0.73, 0.92),
+        ];
+        let px = 1.0 / height;
+        for (colour, top, bottom) in BARS {
+            let inside =
+                ((v - top) / px + 0.5).clamp(0.0, 1.0) * ((bottom - v) / px + 0.5).clamp(0.0, 1.0);
+            c = over(c, colour, inside);
+        }
+        let plate = round_rect(
+            x - self.centre.0,
+            y - (self.panel_top + height * 0.55),
+            self.screen.width * 0.22,
+            height * 0.42,
+            height * 0.12,
+        );
+        let plate_c = mix(cab::BLUE_LIGHT, cab::BLUE, v);
+        c = over(c, scale(c, 0.6), coverage(plate - 2.0) * 0.6); // its shadow
+        c = over(c, plate_c, coverage(plate));
+        // START on the left, WIPER and LIGHT on the right, as on the cabinet
+        let r = height * 0.24;
+        let by = self.panel_top + height * 0.52;
+        let reach = self.screen.width * 0.22 + r * 2.4;
+        let buttons = [
+            (self.centre.0 - reach, palette::GOLD),
+            (self.centre.0 + reach, cab::BLUE_LIGHT),
+            (self.centre.0 + reach + r * 2.8, [0x1c, 0x9a, 0x48]),
+        ];
+        for (bx, colour) in buttons {
+            c = button_over(c, x - bx, y - by, r, colour);
+        }
+        // chrome lip along the top
+        let lip = (self.h * 0.006).max(1.0);
+        if y - self.panel_top < lip {
+            c = mix(palette::CHROME, palette::STEEL, (y - self.panel_top) / lip);
+        }
+        c
+    }
+}
+
+/// A round arcade button of radius `r` at the origin: a dark bezel ring, a
+/// coloured cap lit from the top left, and its shadow.
+fn button_over(mut c: [u8; 3], x: f32, y: f32, r: f32, colour: [u8; 3]) -> [u8; 3] {
+    let d = x.hypot(y);
+    if d > r * 1.5 {
+        return c;
+    }
+    c = over(
+        c,
+        scale(c, 0.55),
+        coverage(x.hypot(y - r * 0.18) - r * 1.12) * 0.7,
+    );
+    c = over(c, [0x1a, 0x1a, 0x22], coverage(d - r * 1.12));
+    let lit = ((-x - y) / r * 0.5 + 0.5).clamp(0.0, 1.0);
+    let cap = mix(
+        scale(colour, 0.7),
+        mix(colour, [0xff, 0xff, 0xff], 0.35),
+        lit,
+    );
+    c = over(c, cap, coverage(d - r * 0.9));
+    let glint = x.hypot(y + r * 0.4) / (r * 0.35);
+    over(c, [0xff, 0xff, 0xff], ((1.0 - glint) * 0.6).clamp(0.0, 0.6))
 }
 
 /// Signed distance to a rounded rectangle centred on the origin.
@@ -186,47 +422,47 @@ fn round_rect(x: f32, y: f32, half_w: f32, half_h: f32, radius: f32) -> f32 {
     outside + qx.max(qy).min(0.0) - radius
 }
 
-/// Black plastic, lighter toward the top, with a chrome lip at the glass.
-fn monitor_frame(hole: f32, outer: f32, frame: f32, down: f32) -> [u8; 3] {
-    let depth = (-outer / frame).clamp(0.0, 1.0); // 0 at the outer edge, 1 at the glass
-    let gloss = (1.0 - down).powi(3) * 0.5;
-    let base = mix(
-        [0x0a, 0x08, 0x0e],
-        [0x2e, 0x2a, 0x3a],
-        gloss + (1.0 - depth) * 0.25,
-    );
-    if hole < 2.5 {
-        mix(scale(palette::CHROME, 0.75), palette::STEEL, down)
-    } else {
-        base
-    }
+/// Signed distance to a five-pointed star of outer radius `r`, point up
+/// (after Inigo Quilez's `sdStar5`).
+fn star5(x: f32, y: f32, r: f32) -> f32 {
+    const K1: (f32, f32) = (0.809_017, -0.587_785);
+    const K2: (f32, f32) = (-K1.0, K1.1);
+    const INNER: f32 = 0.382;
+    // the formula works with y up
+    let (mut px, mut py) = (x.abs(), -y);
+    let d1 = (K1.0 * px + K1.1 * py).max(0.0) * 2.0;
+    px -= d1 * K1.0;
+    py -= d1 * K1.1;
+    let d2 = (K2.0 * px + K2.1 * py).max(0.0) * 2.0;
+    px -= d2 * K2.0;
+    py -= d2 * K2.1;
+    px = px.abs();
+    py -= r;
+    let (bax, bay) = (INNER * -K1.1, INNER * K1.0 - 1.0);
+    let h = ((px * bax + py * bay) / (bax * bax + bay * bay)).clamp(0.0, r);
+    let len = (px - bax * h).hypot(py - bay * h);
+    len * (py * bax - px * bay).signum()
 }
 
-/// The cabinet beside the screen: a dusk gradient with four speed stripes
-/// sweeping up on each side, and the frame's shadow.
-fn cabinet(x: f32, y: f32, w: f32, h: f32, outer: f32, frame: f32) -> [u8; 3] {
-    let down = y / h;
-    let mut c = mix(palette::NIGHT, [0x08, 0x05, 0x12], down);
-    // mirror the right side onto the left
-    let side_x = x.min(w - x);
-    let u = (side_x + (h - y) * 0.55) / h;
-    const STRIPES: [[u8; 3]; 4] = [
-        palette::GOLD,
-        palette::ORANGE,
-        palette::CRIMSON,
-        palette::PURPLE,
-    ];
-    let start = 0.10;
-    let pitch = 0.055;
-    let band = (u - start) / pitch;
-    if band >= 0.0 && (band as usize) < STRIPES.len() && band.fract() < 0.7 {
-        let stripe = STRIPES[band as usize];
-        // fade out as the stripes climb toward the top
-        c = mix(c, stripe, 0.6 + 0.3 * down);
-    }
-    // the frame casts a soft shadow
-    let shadow = (-outer / (frame * 1.5)).exp() * 0.65;
-    scale(c, 1.0 - shadow)
+/// Distance from (x, y) to the segment from (ax, ay) to (bx, by).
+fn segment(x: f32, y: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let (pax, pay, bax, bay) = (x - ax, y - ay, bx - ax, by - ay);
+    let h = ((pax * bax + pay * bay) / (bax * bax + bay * bay)).clamp(0.0, 1.0);
+    (pax - bax * h).hypot(pay - bay * h)
+}
+
+/// How much of a pixel a shape covers, from its signed distance.
+fn coverage(distance: f32) -> f32 {
+    (0.5 - distance).clamp(0.0, 1.0)
+}
+
+/// Coverage of a line `width` wide, `at` along a distance `d`.
+fn band(d: f32, at: f32, width: f32) -> f32 {
+    coverage((d - at).abs() - width / 2.0)
+}
+
+fn over(base: [u8; 3], top: [u8; 3], amount: f32) -> [u8; 3] {
+    mix(base, top, amount)
 }
 
 #[cfg(test)]
@@ -294,6 +530,51 @@ mod tests {
         for y in [20, 90, 160] {
             assert_eq!(img.pixel(10, y), img.pixel(309, y), "row {y}");
         }
+    }
+
+    #[test]
+    fn the_sides_wear_stars_and_stripes_and_the_panel_sits_below() {
+        let (img, screen) = bezel(1920, 1080);
+        assert!(screen.y < 1080.0 - (screen.y + screen.height), "room below");
+        let side = (screen.x - 1080.0 * 0.042) as u32;
+        let mut red = 0;
+        let mut white = 0;
+        let mut blue = 0;
+        for y in (0..900).step_by(3) {
+            for x in (0..side).step_by(3) {
+                let [r, g, b, _] = img.pixel(x, y);
+                let (r, g, b) = (i32::from(r), i32::from(g), i32::from(b));
+                if r > 150 && g < 80 && b < 80 {
+                    red += 1;
+                } else if r > 180 && g > 180 && b > 170 {
+                    white += 1;
+                } else if b > 100 && r < 70 {
+                    blue += 1;
+                }
+            }
+        }
+        assert!(
+            red > 500 && white > 500 && blue > 500,
+            "{red} {white} {blue}"
+        );
+        // the panel's bars: warm colours under the picture's corners
+        let below = (screen.y + screen.height) as u32 + 60;
+        let warm = (below..1080).any(|y| {
+            let [r, g, b, _] = img.pixel(screen.x as u32 + 20, y);
+            r > 180 && b < 90 && g < 200
+        });
+        assert!(warm);
+    }
+
+    #[test]
+    fn a_star_is_inside_at_its_centre_and_points() {
+        assert!(star5(0.0, 0.0, 10.0) < 0.0);
+        assert!(star5(0.0, -9.0, 10.0) < 0.0, "top point (y down)");
+        assert!(
+            star5(0.0, 9.0, 10.0) > 0.0,
+            "a notch between the lower points"
+        );
+        assert!(star5(20.0, 0.0, 10.0) > 0.0);
     }
 
     #[test]

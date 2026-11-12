@@ -8,6 +8,11 @@ Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
   that takes force feedback, so steering works without touching the
   settings. New **WHEEL** item on the WHEEL page to pick one by hand.
 - A gamepad's spare interfaces no longer show up as extra devices.
+- **CABINET BEZEL** redrawn after the upright Rad Mobile cabinet: stars
+  and stripes down both sides, a star roundel with a chrome steering
+  wheel, a monitor surround with red and blue pinstripes, and the control
+  panel's sunset bars with START, WIPER and LIGHT buttons. Still drawn by
+  the launcher; no artwork or logos are copied.
 - At 100 % volume MAME keeps its own volume setting (Windows was silent
   at some lower volumes; if yours is, set 100 % and please report it).
 
