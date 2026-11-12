@@ -1,0 +1,21 @@
+button bit key mame_type mame_key radm_field label
+Light 0x01 light P1_BUTTON1 KEYCODE_SPACE Some((":mainpcb:P1_A", 2)) "Lights"
+Wiper 0x02 wiper P1_BUTTON2 KEYCODE_LSHIFT Some((":mainpcb:P1_A", 4)) "Wiper"
+Start 0x04 start START1 KEYCODE_1 None "Start"
+Coin 0x08 coin COIN1 KEYCODE_5 None "Coin"
+Service 0x10 service SERVICE1 KEYCODE_9 None "Service"
+Test 0x20 test SERVICE KEYCODE_F2 None "Test menu"
+Pause 0x40 pause UI_PAUSE KEYCODE_P None "Pause"
+Exit 0x80 exit UI_CANCEL KEYCODE_ESC None "Back to menu"
+
+action key label
+Accelerate accel "ACCELERATOR"
+Brake brake "BRAKE"
+Press(Light) light "LIGHTS"
+Press(Wiper) wiper "WIPER"
+Press(Start) start "START"
+Press(Coin) coin "COIN"
+Press(Exit) exit "BACK TO MENU"
+Press(Pause) pause "PAUSE"
+Press(Service) service "SERVICE"
+Press(Test) test "TEST MENU"

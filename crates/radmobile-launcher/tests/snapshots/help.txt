@@ -1,0 +1,13 @@
+Rad Mobile launcher
+
+USAGE: RadMobile [OPTIONS]
+
+  (no option)            open the menu
+  --play                 start the game straight away (for frontends), exit when it ends
+  --windowed             open the menu in a window
+  --data <DIR>           keep settings and MAME data in DIR
+  --check-roms           report what the ROM search finds, then exit
+  --list-devices         list wheels, pedals and gamepads for 3 seconds, then exit
+  --print-mame-command   print the MAME command line the current settings give, then exit
+  --mame-args "<ARGS>" extra MAME options, appended as they are (with --play)
+  --help                 this text

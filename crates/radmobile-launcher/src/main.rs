@@ -6,6 +6,8 @@
 mod art_io;
 mod backdrop;
 mod child;
+#[cfg(test)]
+mod golden;
 mod input;
 mod log;
 mod paths;
