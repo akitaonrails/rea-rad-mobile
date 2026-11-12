@@ -63,7 +63,7 @@ fn run(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    let mut child = crate::child::spawn(&mut cmd)?;
+    let mut child = rea_launcher_native::child::spawn_tied(&mut cmd)?;
     let started = Instant::now();
     loop {
         if child.try_wait()?.is_some() {
