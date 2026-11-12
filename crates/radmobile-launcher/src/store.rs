@@ -11,7 +11,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use radmobile_core::settings::Settings;
-use radmobile_core::wheel::WheelProfile;
+use radmobile_core::wheel::{self, WheelProfile};
 use rea_launcher::cfg;
 
 use crate::paths::AppPaths;
@@ -63,7 +63,7 @@ pub fn save_settings(path: &Path, settings: &Settings) -> io::Result<()> {
 pub fn save_profile(path: &Path, profile: Option<&WheelProfile>) -> io::Result<()> {
     match profile {
         Some(p) => {
-            let text = p.to_cfg(&existing(path)?);
+            let text = p.to_cfg(&existing(path)?, wheel::WHEEL_INI_HEADER);
             crate::session::write_atomic(path, text.as_bytes())
         }
         None => match std::fs::remove_file(path) {

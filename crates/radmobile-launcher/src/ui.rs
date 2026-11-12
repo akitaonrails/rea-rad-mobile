@@ -9,8 +9,8 @@ use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2,
 };
 use radmobile_core::art::{self, palette};
-use radmobile_core::controls::{Action, Button};
-use radmobile_core::pad_map::{Capture, PadCapture, PadMap};
+use radmobile_core::controls::{self, Action, Button};
+use radmobile_core::pad_map::{self, Capture, PadCapture};
 use radmobile_core::settings::{self as cfg, InputMode, Settings};
 use radmobile_core::wheel::wizard::{Status, Step, Wizard};
 use radmobile_core::wheel::{self, DeviceId, WheelProfile};
@@ -205,16 +205,8 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
             CreditsContinue,
             Back,
         ],
-        Screen::PadMap => Action::ALL
-            .into_iter()
-            .map(Map)
-            .chain([ResetPadMap, Back])
-            .collect(),
-        Screen::WheelMap => Action::ALL
-            .into_iter()
-            .map(Map)
-            .chain([ResetWheel, Back])
-            .collect(),
+        Screen::PadMap => Action::all().map(Map).chain([ResetPadMap, Back]).collect(),
+        Screen::WheelMap => Action::all().map(Map).chain([ResetWheel, Back]).collect(),
         Screen::Roms => vec![RomFolder, Rescan, Back],
         Screen::Wizard | Screen::Running => vec![],
     }
@@ -262,7 +254,7 @@ fn label(item: Item) -> &'static str {
         InvertAccel => "INVERT ACCEL",
         InvertBrake => "INVERT BRAKE",
         ResetWheel => "RESET WHEEL TO AUTOMATIC",
-        Map(action) => action.label(),
+        Map(action) => controls::action_label(action),
         ResetPadMap => "RESET TO DEFAULTS",
         Region => "REGION",
         Difficulty => "DIFFICULTY",
@@ -776,7 +768,7 @@ impl App {
     fn base_profile(&self, devices: &[(usize, DeviceId)]) -> WheelProfile {
         let (index, id) = &devices[0];
         let mut profile = self.snapshot.profile.clone().unwrap_or_else(|| {
-            WheelProfile::guess(
+            wheel::guess(
                 id.clone(),
                 &self
                     .snapshot
@@ -796,7 +788,7 @@ impl App {
         };
         let steer_axis = self.steer_axis();
         self.wizard = Some(WizardRun {
-            wizard: Wizard::new(steer_axis),
+            wizard: wheel::wizard::full(steer_axis),
             started: Instant::now(),
             devices,
             status: Status::WarmingUp,
@@ -877,7 +869,7 @@ impl App {
         };
         let action = remap.action;
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            self.end_remap(format!("{} UNCHANGED", action.label()), DIM);
+            self.end_remap(format!("{} UNCHANGED", controls::action_label(action)), DIM);
             return;
         }
         let elapsed = remap.started.elapsed().as_millis() as u64;
@@ -894,10 +886,20 @@ impl App {
                 Capture::Got(input) => {
                     self.settings.pad.map.assign(action, input);
                     self.save();
-                    self.end_remap(format!("{} SET TO {}", action.label(), input.label()), OK);
+                    self.end_remap(
+                        format!(
+                            "{} SET TO {}",
+                            controls::action_label(action),
+                            input.label()
+                        ),
+                        OK,
+                    );
                 }
                 Capture::TimedOut => self.end_remap(
-                    format!("NOTHING PRESSED - {} UNCHANGED", action.label()),
+                    format!(
+                        "NOTHING PRESSED - {} UNCHANGED",
+                        controls::action_label(action)
+                    ),
                     DIM,
                 ),
                 Capture::Releasing => self.remap_status = Some("LET GO…".into()),
@@ -914,10 +916,16 @@ impl App {
                     let shown = profile.describe(action);
                     self.profile = Some(profile);
                     self.save_profile();
-                    self.end_remap(format!("{} SET TO {shown}", action.label()), OK);
+                    self.end_remap(
+                        format!("{} SET TO {shown}", controls::action_label(action)),
+                        OK,
+                    );
                 }
                 Status::Done(_) => self.end_remap(
-                    format!("NOTHING PRESSED - {} UNCHANGED", action.label()),
+                    format!(
+                        "NOTHING PRESSED - {} UNCHANGED",
+                        controls::action_label(action)
+                    ),
                     DIM,
                 ),
                 Status::Waiting { remaining_ms, .. } => {
@@ -981,7 +989,7 @@ impl App {
                 let paths: Vec<&str> = wheels(&self.snapshot).map(|d| d.path.as_str()).collect();
                 s.wheel.device = next_wheel(&s.wheel.device, &paths, dd);
             }
-            SteerAssist => s.pad.steer_assist = !s.pad.steer_assist,
+            SteerAssist => s.steer_assist = !s.steer_assist,
             StickDeadzone => {
                 s.pad.stick_deadzone =
                     (i32::from(s.pad.stick_deadzone) + dd * 500).clamp(0, 16_000) as u16
@@ -1045,7 +1053,7 @@ impl App {
                 self.start_remap(action);
             }
             ResetPadMap if d == 0 => {
-                s.pad.map = PadMap::default();
+                s.pad.map = pad_map::layout();
                 self.say("GAMEPAD BUTTONS BACK TO DEFAULTS", OK);
             }
             RomFolder if d == 0 => {
@@ -1089,7 +1097,7 @@ impl App {
             AttractSound => on_off(s.game.attract_sound),
             InputDevice => s.input.label().to_uppercase(),
             WheelDevice => wheel_label(&self.snapshot, &s.wheel.device),
-            SteerAssist => steering_label(s.pad.steer_assist),
+            SteerAssist => steering_label(s.steer_assist),
             StickDeadzone => format!("{}", s.pad.stick_deadzone),
             StickLinearity => wheel::linearity_label(s.pad.stick_linearity).to_uppercase(),
             TriggerDeadzone => format!("{}", s.pad.trigger_deadzone),
@@ -1692,7 +1700,7 @@ impl App {
                 index,
                 remaining_ms,
             } => (
-                step.prompt().to_uppercase(),
+                wheel::wizard::prompt(*step).to_uppercase(),
                 format!(
                     "STEP {} OF {}   TIMEOUT SKIPS IN {}s",
                     index + 1,
@@ -1706,7 +1714,7 @@ impl App {
                 index,
                 travel,
             } => (
-                step.prompt().to_uppercase(),
+                wheel::wizard::prompt(*step).to_uppercase(),
                 format!(
                     "STEP {} OF {}   NOW LET GO",
                     index + 1,
@@ -1972,7 +1980,7 @@ mod tests {
         let s = Settings::default();
         for screen in [Screen::PadMap, Screen::WheelMap] {
             let list = items(screen, &s);
-            for action in Action::ALL {
+            for action in Action::all() {
                 assert!(list.contains(&Item::Map(action)), "{screen:?} {action:?}");
             }
         }

@@ -1,6 +1,8 @@
 //! The Rad Mobile cabinet's controls, how they travel through the bridge,
 //! and the MAME controller file that maps them onto the game.
 
+use rea_launcher::wheel::Control;
+
 use crate::bridge::{AXIS_MAX, AXIS_MIN, Frame};
 
 /// Bridge axis carrying the steering wheel (MAME `JOYCODE_1_XAXIS`).
@@ -30,6 +32,9 @@ pub enum Button {
 }
 
 impl Button {
+    /// In bridge order: [`Button::bit`], MAME's `JOYCODE_1_BUTTONn` and the
+    /// controller file follow the declaration order, so never reorder the
+    /// enum. The menu's order is [`Control::ALL`].
     pub const ALL: [Button; 8] = [
         Button::Light,
         Button::Wiper,
@@ -115,109 +120,68 @@ impl Button {
     }
 }
 
-/// A cabinet control a player can bind to a pad or a wheel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Action {
-    Accelerate,
-    Brake,
-    Press(Button),
-}
-
-impl Action {
-    /// In menu order.
-    pub const ALL: [Action; 10] = [
-        Action::Accelerate,
-        Action::Brake,
-        Action::Press(Button::Light),
-        Action::Press(Button::Wiper),
-        Action::Press(Button::Start),
-        Action::Press(Button::Coin),
-        Action::Press(Button::Exit),
-        Action::Press(Button::Pause),
-        Action::Press(Button::Service),
-        Action::Press(Button::Test),
+/// The cabinet's buttons for [`rea_launcher::wheel`]: the settings keys
+/// (`btn_<key>`, `pad_<key>`), the menu names and the bridge bits.
+impl Control for Button {
+    /// The menu's order (also the order of the `pad_*` keys in a new
+    /// `settings.ini`), which is not the bridge's: Back to menu comes right
+    /// after Coin.
+    const ALL: &'static [Button] = &[
+        Button::Light,
+        Button::Wiper,
+        Button::Start,
+        Button::Coin,
+        Button::Exit,
+        Button::Pause,
+        Button::Service,
+        Button::Test,
     ];
 
-    pub(crate) const COUNT: usize = Self::ALL.len();
-
-    pub(crate) fn index(self) -> usize {
-        match self {
-            Action::Accelerate => 0,
-            Action::Brake => 1,
-            Action::Press(b) => 2 + b as usize,
-        }
+    fn key(self) -> &'static str {
+        Button::key(self)
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            Action::Accelerate => "ACCELERATOR",
-            Action::Brake => "BRAKE",
-            Action::Press(Button::Light) => "LIGHTS",
-            Action::Press(Button::Wiper) => "WIPER",
-            Action::Press(Button::Start) => "START",
-            Action::Press(Button::Coin) => "COIN",
-            Action::Press(Button::Exit) => "BACK TO MENU",
-            Action::Press(Button::Pause) => "PAUSE",
-            Action::Press(Button::Service) => "SERVICE",
-            Action::Press(Button::Test) => "TEST MENU",
-        }
+    fn label(self) -> &'static str {
+        Button::label(self)
     }
 
-    /// The name in settings files.
-    pub fn key(self) -> &'static str {
-        match self {
-            Action::Accelerate => "accel",
-            Action::Brake => "brake",
-            Action::Press(b) => b.key(),
-        }
+    fn bit(self) -> u32 {
+        Button::bit(self)
+    }
+}
+
+/// A cabinet control a player can bind to a pad or a wheel; `Action::all()`
+/// is in menu order.
+pub type Action = rea_launcher::wheel::Action<Button>;
+
+/// What the menu calls a control.
+pub fn action_label(action: Action) -> &'static str {
+    match action {
+        Action::Accelerate => "ACCELERATOR",
+        Action::Brake => "BRAKE",
+        Action::Press(Button::Light) => "LIGHTS",
+        Action::Press(Button::Wiper) => "WIPER",
+        Action::Press(Button::Start) => "START",
+        Action::Press(Button::Coin) => "COIN",
+        Action::Press(Button::Exit) => "BACK TO MENU",
+        Action::Press(Button::Pause) => "PAUSE",
+        Action::Press(Button::Service) => "SERVICE",
+        Action::Press(Button::Test) => "TEST MENU",
     }
 }
 
 /// The cabinet's state after the launcher has applied steering lock,
-/// curves and calibration.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct Cabinet {
-    /// −1 full left … +1 full right.
-    pub steer: f32,
-    /// 0 released … 1 floored.
-    pub accel: f32,
-    pub brake: f32,
-    /// [`Button::bit`] flags.
-    pub buttons: u32,
-}
+/// curves and calibration: steering −1..1, pedals 0..1, [`Button::bit`]s.
+pub type Cabinet = rea_launcher::wheel::Controls;
 
-impl Cabinet {
-    pub fn press(&mut self, button: Button) {
-        self.buttons |= button.bit();
-    }
-
-    pub fn is_pressed(&self, button: Button) -> bool {
-        self.buttons & button.bit() != 0
-    }
-
-    /// Combine two sources (wheel and keyboard-like pad, say): the larger
-    /// steering deflection and pedal travel win, buttons add up.
-    pub fn merge(self, other: Cabinet) -> Cabinet {
-        Cabinet {
-            steer: if other.steer.abs() > self.steer.abs() {
-                other.steer
-            } else {
-                self.steer
-            },
-            accel: self.accel.max(other.accel),
-            brake: self.brake.max(other.brake),
-            buttons: self.buttons | other.buttons,
-        }
-    }
-
-    pub fn to_frame(&self) -> Frame {
-        let mut frame = Frame::released();
-        frame.axes[AXIS_STEER] = to_axis_signed(self.steer);
-        frame.axes[AXIS_ACCEL] = to_axis_pedal(self.accel);
-        frame.axes[AXIS_BRAKE] = to_axis_pedal(self.brake);
-        frame.buttons = self.buttons;
-        frame
-    }
+/// The cabinet as the bridge carries it to MAME.
+pub fn to_frame(cab: &Cabinet) -> Frame {
+    let mut frame = Frame::released();
+    frame.axes[AXIS_STEER] = to_axis_signed(cab.steer);
+    frame.axes[AXIS_ACCEL] = to_axis_pedal(cab.accel);
+    frame.axes[AXIS_BRAKE] = to_axis_pedal(cab.brake);
+    frame.buttons = cab.buttons;
+    frame
 }
 
 fn to_axis_signed(v: f32) -> i32 {
@@ -304,36 +268,33 @@ mod tests {
 
     #[test]
     fn cabinet_maps_to_mame_axis_ranges() {
-        let frame = Cabinet {
+        let frame = to_frame(&Cabinet {
             steer: -1.0,
             accel: 1.0,
             brake: 0.0,
             buttons: 0,
-        }
-        .to_frame();
+        });
         assert_eq!(frame.axes[AXIS_STEER], AXIS_MIN);
         assert_eq!(frame.axes[AXIS_ACCEL], AXIS_MAX);
         assert_eq!(frame.axes[AXIS_BRAKE], AXIS_MIN);
 
-        let half = Cabinet {
+        let half = to_frame(&Cabinet {
             steer: 0.5,
             accel: 0.5,
             ..Default::default()
-        }
-        .to_frame();
+        });
         assert_eq!(half.axes[AXIS_STEER], 32_768);
         assert_eq!(half.axes[AXIS_ACCEL], 0);
     }
 
     #[test]
     fn out_of_range_values_are_clamped() {
-        let frame = Cabinet {
+        let frame = to_frame(&Cabinet {
             steer: 3.0,
             accel: -2.0,
             brake: 9.0,
             buttons: 0,
-        }
-        .to_frame();
+        });
         assert_eq!(frame.axes[AXIS_STEER], AXIS_MAX);
         assert_eq!(frame.axes[AXIS_ACCEL], AXIS_MIN);
         assert_eq!(frame.axes[AXIS_BRAKE], AXIS_MAX);
@@ -344,29 +305,36 @@ mod tests {
         let mut cab = Cabinet::default();
         cab.press(Button::Light);
         cab.press(Button::Exit);
-        assert_eq!(cab.to_frame().buttons, 0b1000_0001);
+        assert_eq!(to_frame(&cab).buttons, 0b1000_0001);
         assert!(cab.is_pressed(Button::Exit) && !cab.is_pressed(Button::Start));
     }
 
     #[test]
-    fn merge_takes_the_stronger_input() {
-        let wheel = Cabinet {
-            steer: 0.2,
-            accel: 0.9,
-            brake: 0.0,
-            buttons: Button::Light.bit(),
-        };
-        let pad = Cabinet {
-            steer: -0.6,
-            accel: 0.1,
-            brake: 0.3,
-            buttons: Button::Start.bit(),
-        };
-        let both = wheel.merge(pad);
-        assert_eq!(both.steer, -0.6);
-        assert_eq!(both.accel, 0.9);
-        assert_eq!(both.brake, 0.3);
-        assert_eq!(both.buttons, Button::Light.bit() | Button::Start.bit());
+    fn the_menu_order_is_not_the_bridge_order() {
+        let menu: Vec<_> = Action::all().map(action_label).collect();
+        assert_eq!(
+            menu,
+            [
+                "ACCELERATOR",
+                "BRAKE",
+                "LIGHTS",
+                "WIPER",
+                "START",
+                "COIN",
+                "BACK TO MENU",
+                "PAUSE",
+                "SERVICE",
+                "TEST MENU"
+            ]
+        );
+        // every button once in each order; the bits follow the enum
+        let mut menu_buttons = <Button as Control>::ALL.to_vec();
+        menu_buttons.sort();
+        assert_eq!(menu_buttons, Button::ALL);
+        for (i, b) in Button::ALL.into_iter().enumerate() {
+            assert_eq!(b.bit(), 1 << i);
+            assert_eq!(Control::bit(b), b.bit());
+        }
     }
 
     #[test]

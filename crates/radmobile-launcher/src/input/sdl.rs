@@ -83,13 +83,7 @@ pub fn error() -> String {
 }
 
 /// What kind of device this is, as far as the launcher cares.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    Wheel,
-    Pad,
-    /// Pedals, shifters, button boxes, flight sticks.
-    Other,
-}
+pub use radmobile_core::wheel::Kind;
 
 /// An opened joystick, and its game-controller view when SDL has one.
 pub struct Device {
@@ -135,7 +129,7 @@ impl Device {
                     .into_owned(),
             };
             let is_wheel = known::lookup(id.vid, id.pid).is_some()
-                || known::is_wheel_vendor(id.vid)
+                || known::wheel_vendor(id.vid)
                 || sys::SDL_JoystickGetType(j) == sys::SDL_JoystickType::SDL_JOYSTICK_TYPE_WHEEL;
             let pad = if !is_wheel && sys::SDL_IsGameController(index) == sys::SDL_bool::SDL_TRUE {
                 NonNull::new(sys::SDL_GameControllerOpen(index))

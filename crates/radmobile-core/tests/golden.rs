@@ -14,7 +14,7 @@ use radmobile_core::controls::{self, Action, Button};
 use radmobile_core::eeprom::{self, GameSettings};
 use radmobile_core::ffb::FfbSettings;
 use radmobile_core::mame::{self, Paths, Screen};
-use radmobile_core::pad_map::{PadInput, PadMap};
+use radmobile_core::pad_map::{self, PadInput};
 use radmobile_core::settings::{
     Aspect, Display, Filter, InputMode, Preset, RaceTime, Resolution, Settings, WideTarget,
 };
@@ -72,14 +72,14 @@ fn every_field_changed() -> Settings {
             stick_linearity: 40,
             trigger_deadzone: 12,
             trigger_linearity: 25,
-            steer_assist: false,
             map: {
-                let mut map = PadMap::default();
+                let mut map = pad_map::layout();
                 map.assign(Action::Press(Button::Pause), PadInput::RightStick);
                 map.assign(Action::Accelerate, PadInput::RightShoulder);
                 map
             },
         },
+        steer_assist: false,
         ffb: FfbSettings {
             strength: 75,
             invert: true,
@@ -194,9 +194,9 @@ fn old_format_expected() -> Settings {
             stick_linearity: 10,
             trigger_deadzone: 4,
             trigger_linearity: 0,
-            steer_assist: false,
             map: d.pad.map,
         },
+        steer_assist: false,
         ffb: FfbSettings {
             strength: 60,
             invert: true,
@@ -382,8 +382,8 @@ fn control_tables() {
         .unwrap();
     }
     out.push_str("\naction key label\n");
-    for a in Action::ALL {
-        writeln!(out, "{a:?} {} {:?}", a.key(), a.label()).unwrap();
+    for a in Action::all() {
+        writeln!(out, "{a:?} {} {:?}", a.key(), controls::action_label(a)).unwrap();
     }
     snapshot!("controls.txt", out);
 }
@@ -453,16 +453,16 @@ fn at_rest() -> DeviceState {
 }
 
 fn wheel_ini(p: &WheelProfile) -> String {
-    let text = p.to_cfg("");
+    let text = p.to_cfg("", wheel::WHEEL_INI_HEADER);
     // what was written reads back the same, and saving again changes nothing
     assert_eq!(WheelProfile::from_cfg(&text).as_ref(), Some(p));
-    assert_eq!(p.to_cfg(&text), text);
+    assert_eq!(p.to_cfg(&text, wheel::WHEEL_INI_HEADER), text);
     text
 }
 
 #[test]
 fn wheel_ini_for_a_guessed_csl_dd() {
-    let p = WheelProfile::guess(csl_dd(), &at_rest());
+    let p = wheel::guess(csl_dd(), &at_rest());
     snapshot!("wheel-csl-dd-guess.ini", wheel_ini(&p));
 }
 
@@ -474,7 +474,7 @@ fn wheel_ini_for_a_guessed_unknown_wheel() {
         pid: 0xabcd,
         guid: String::new(),
     };
-    let p = WheelProfile::guess(unknown, &DeviceState::default());
+    let p = wheel::guess(unknown, &DeviceState::default());
     snapshot!("wheel-unknown-guess.ini", wheel_ini(&p));
 }
 
@@ -492,7 +492,7 @@ fn wheel_ini_after_the_wizard_with_aux_pedals() {
         pid: 0x05e1,
         guid: "bb".into(),
     };
-    let mut p = WheelProfile::guess(csl_dd(), &at_rest());
+    let mut p = wheel::guess(csl_dd(), &at_rest());
     let captures = wizard::Captures {
         gas: Some((
             1,
