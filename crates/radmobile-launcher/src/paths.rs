@@ -231,15 +231,21 @@ mod tests {
     #[test]
     fn a_read_only_portable_folder_falls_back_to_the_user_folder() {
         use std::os::unix::fs::PermissionsExt;
+        /// Makes the folder writable again however the test ends, so the
+        /// temp folder (and `sdk/scripts/clean`) can remove it.
+        struct ReadOnly<'a>(&'a Path);
+        impl Drop for ReadOnly<'_> {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
         let (dir, exe) = binary_in_fresh_folder();
-        let set_mode = |mode| {
-            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(mode)).unwrap()
-        };
-        set_mode(0o555);
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+        let read_only = ReadOnly(dir.path());
         // root writes anyway: nothing to check then
         let writable = std::fs::create_dir(dir.path().join("data")).is_ok();
         let p = (!writable).then(|| run_probe(&exe, "detect", &[("XDG_DATA_HOME", "/xdg")]));
-        set_mode(0o755);
+        drop(read_only);
         if let Some(p) = p {
             assert_eq!(p.data, Some(PathBuf::from("/xdg/rad-mobile")));
         }
