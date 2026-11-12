@@ -1,6 +1,6 @@
 Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 
-## Changes in 0.2.1 (unreleased)
+## Changes in 0.3.0
 
 - Gamepads and wheels now turn on the lights and the wiper. MAME's Rad
   Mobile driver fixed both buttons to keyboard keys (Space, Left Shift),
