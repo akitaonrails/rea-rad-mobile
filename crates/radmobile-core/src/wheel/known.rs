@@ -57,6 +57,10 @@ pub const KNOWN: &[KnownWheel] = &[
 /// Rotation assumed for a wheel we don't know.
 pub const GENERIC_ROTATION: u16 = 900;
 
+/// Shift paddles (up, down) assumed for a wheel we don't know: Wanszai's
+/// generic row (docs/WANSZAI_WHEELS.md §1).
+pub const GENERIC_PADDLES: (u8, u8) = (0, 1);
+
 pub fn lookup(vid: u16, pid: u16) -> Option<&'static KnownWheel> {
     KNOWN.iter().find(|k| k.vid == vid && k.pid == pid)
 }

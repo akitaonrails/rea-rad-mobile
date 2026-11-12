@@ -70,6 +70,9 @@ struct Armed {
 
 #[derive(Debug, Clone)]
 pub struct Wizard {
+    /// What to ask for, in order: [`STEPS`] for a full setup, one step to
+    /// remap a single control.
+    steps: Vec<Step>,
     step: usize,
     step_started_ms: Option<u64>,
     ticks: u32,
@@ -99,8 +102,19 @@ pub enum Status {
 }
 
 impl Wizard {
+    /// The full setup: pedals, then [`STEPS`]' buttons.
     pub fn new(steer_axis: usize) -> Self {
+        Self::with_steps(STEPS.to_vec(), steer_axis)
+    }
+
+    /// Ask for one control only (the menu's remapping).
+    pub fn single(step: Step, steer_axis: usize) -> Self {
+        Self::with_steps(vec![step], steer_axis)
+    }
+
+    fn with_steps(steps: Vec<Step>, steer_axis: usize) -> Self {
         Self {
+            steps,
             step: 0,
             step_started_ms: None,
             ticks: 0,
@@ -112,7 +126,12 @@ impl Wizard {
     }
 
     pub fn current(&self) -> Option<Step> {
-        STEPS.get(self.step).copied()
+        self.steps.get(self.step).copied()
+    }
+
+    /// How many steps this run asks for.
+    pub fn step_count(&self) -> usize {
+        self.steps.len()
     }
 
     /// Feed the readings of every device; `now_ms` is a monotonic clock.
@@ -290,6 +309,24 @@ mod tests {
             self.tick();
             s
         }
+    }
+
+    #[test]
+    fn a_single_step_asks_for_that_control_only() {
+        let mut wiz = Wizard::single(Step::Button(Button::Coin), 0);
+        assert_eq!(wiz.step_count(), 1);
+        let mut devs = vec![wheel()];
+        let mut now = 0;
+        for _ in 0..WARM_UP_TICKS {
+            now += 4;
+            wiz.tick(now, &devs);
+        }
+        devs[0].buttons[7] = true;
+        let Status::Done(result) = wiz.tick(now + 4, &devs) else {
+            panic!("not done");
+        };
+        assert_eq!(result.buttons, vec![(Button::Coin, 0, 7)]);
+        assert!(result.gas.is_none() && result.skipped.is_empty());
     }
 
     fn wheel() -> DeviceState {

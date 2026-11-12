@@ -6,6 +6,13 @@ Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
   Mobile driver fixed both buttons to keyboard keys (Space, Left Shift),
   so only the keyboard reached them and Round 3's "Turn on the light"
   could not be answered. Pad: X or LB lights, Y or RB wiper.
+- New **GAMEPAD BUTTONS** (CONTROLLER page) and **WHEEL BUTTONS** (WHEEL
+  page): pick a control, press its new button, trigger or pedal. Every
+  cabinet control can move, pedals included, and a button taken for one
+  control leaves its old one. RESET TO DEFAULTS and RESET WHEEL TO
+  AUTOMATIC go back. Back + Start always returns to the menu.
+- Wheels the launcher does not know get the generic shift paddles
+  (buttons 1 and 2) as lights and wiper, as known wheels already did.
 
 ## Changes in 0.2.0
 

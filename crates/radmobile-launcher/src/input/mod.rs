@@ -16,7 +16,7 @@ use radmobile_core::bridge::Bridge;
 use radmobile_core::controls::{Button, Cabinet};
 use radmobile_core::ffb::{FfbEngine, FfbOutput, Telemetry};
 use radmobile_core::settings::{InputMode, Settings};
-use radmobile_core::wheel::{self, DeviceId, DeviceState, WheelProfile};
+use radmobile_core::wheel::{self, DeviceId, DeviceState, PadState, WheelProfile};
 
 pub use sdl::Kind;
 
@@ -50,6 +50,8 @@ pub enum Active {
 pub struct Snapshot {
     pub devices: Vec<DeviceInfo>,
     pub states: Vec<DeviceState>,
+    /// Every gamepad's buttons and sticks (for remapping in the menu).
+    pub pads: Vec<PadState>,
     pub active: Active,
     /// The wheel mode was chosen but no wheel is connected.
     pub wheel_missing: bool,
@@ -406,6 +408,12 @@ fn tick(st: &mut State, dt: f32, now: Instant, nav_tx: &Sender<Nav>) -> Snapshot
             })
             .collect(),
         states: st.devices.iter().map(|d| d.state.clone()).collect(),
+        pads: st
+            .devices
+            .iter()
+            .filter(|d| d.is_pad())
+            .map(|d| d.pad_state)
+            .collect(),
         active,
         wheel_missing,
         profile,

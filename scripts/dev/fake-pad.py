@@ -9,7 +9,8 @@ its gamepad layout.
 
 The script holds lines "<seconds> <stick_x> <right_trigger> [buttons]":
 stick_x is -1..1, the trigger 0..1, buttons a comma list of names (a, b,
-x, y, lb, rb, back, start, guide) held from that time on.
+x, y, lb, rb, back, start, guide, ls, rs, and up, down, left, right on
+the d-pad) held from that time on.
 """
 import argparse
 import fcntl
@@ -91,6 +92,10 @@ def main():
                 emit(fd, EV_ABS, ABS_RZ, int(max(0, min(1, trigger)) * 255))
                 for b, code in BUTTONS.items():
                     emit(fd, EV_KEY, code, 1 if b in buttons else 0)
+                hat_x = ("right" in buttons) - ("left" in buttons)
+                hat_y = ("down" in buttons) - ("up" in buttons)
+                emit(fd, EV_ABS, ABS_HAT0X, hat_x)
+                emit(fd, EV_ABS, ABS_HAT0Y, hat_y)
                 emit(fd, EV_SYN, 0, 0)
                 log(event="input", stick=stick, trigger=trigger, buttons=buttons)
             time.sleep(0.002)

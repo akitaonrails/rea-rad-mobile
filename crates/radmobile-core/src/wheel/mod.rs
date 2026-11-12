@@ -4,8 +4,9 @@
 pub mod known;
 pub mod wizard;
 
-use crate::controls::{Button, Cabinet};
+use crate::controls::{Action, Button, Cabinet};
 use crate::ini::Ini;
+use crate::pad_map::PadMap;
 
 /// Raw axis full scale, as SDL reports it.
 pub const RAW_MAX: f32 = 32767.0;
@@ -229,13 +230,16 @@ pub struct WheelProfile {
 
 impl WheelProfile {
     /// A first guess for a wheel nobody has set up: steering on the first
-    /// axis, pedals from their resting position, paddles from the table.
+    /// axis, pedals from their resting position, paddles from the table
+    /// (buttons 0 and 1 for a wheel it does not list, as Wanszai's generic
+    /// row) as lights and wiper.
     pub fn guess(wheel: DeviceId, initial: &DeviceState) -> Self {
         let known = known::lookup(wheel.vid, wheel.pid);
         let rotation = known.map_or(known::GENERIC_ROTATION, |k| k.rotation);
         let (gas, brake) = guess_pedals(initial);
         let mut buttons = Vec::new();
-        if let Some((up, down)) = known.and_then(|k| k.paddles) {
+        let paddles = known.map_or(Some(known::GENERIC_PADDLES), |k| k.paddles);
+        if let Some((up, down)) = paddles {
             buttons.push((
                 Button::Light,
                 Binding {
@@ -269,11 +273,91 @@ impl WheelProfile {
             .map(|(_, bind)| *bind)
     }
 
-    pub fn bind(&mut self, button: Button, binding: Option<Binding>) {
-        self.buttons.retain(|(b, _)| *b != button);
-        if let Some(binding) = binding {
-            self.buttons.push((button, binding));
-            self.buttons.sort_by_key(|(b, _)| *b);
+    /// Bind `button` to `binding` alone, taking that binding away from any
+    /// other button so one press never does two things.
+    pub fn assign(&mut self, button: Button, binding: Binding) {
+        self.buttons
+            .retain(|(b, bind)| *b != button && *bind != binding);
+        self.buttons.push((button, binding));
+        self.buttons.sort_by_key(|(b, _)| *b);
+    }
+
+    /// Drop the second device and everything bound to it.
+    pub fn forget_aux(&mut self) {
+        self.aux = None;
+        self.buttons
+            .retain(|(_, bind)| bind.source == Source::Wheel);
+        for pedal in [&mut self.gas, &mut self.brake] {
+            if pedal.is_some_and(|(src, _)| src == Source::Aux) {
+                *pedal = None;
+            }
+        }
+    }
+
+    /// Take what the setup wizard captured. `devices[0]` is the wheel, the
+    /// others are the devices it also watched (wizard device order). The
+    /// first other device used becomes the aux device; whatever was bound to
+    /// a different aux device before is dropped.
+    pub fn apply(&mut self, captures: &wizard::Captures, devices: &[DeviceId]) {
+        let other = captures
+            .gas
+            .map(|(d, _)| d)
+            .into_iter()
+            .chain(captures.brake.map(|(d, _)| d))
+            .chain(captures.buttons.iter().map(|(_, d, _)| *d))
+            .find(|d| *d != 0 && *d < devices.len());
+        if let Some(d) = other
+            && self.aux.as_ref() != Some(&devices[d])
+        {
+            self.forget_aux();
+            self.aux = Some(devices[d].clone());
+        }
+        // the wheel, the new aux device, or (any third device) nothing
+        let source = |d: usize| match d {
+            0 => Some(Source::Wheel),
+            _ if Some(d) == other => Some(Source::Aux),
+            _ => None,
+        };
+        if let Some((src, p)) = captures.gas.and_then(|(d, p)| Some((source(d)?, p))) {
+            self.gas = Some((src, p));
+            if same_pedal(self.brake, (src, p)) {
+                self.brake = None;
+            }
+        }
+        if let Some((src, p)) = captures.brake.and_then(|(d, p)| Some((source(d)?, p))) {
+            self.brake = Some((src, p));
+            if same_pedal(self.gas, (src, p)) {
+                self.gas = None;
+            }
+        }
+        for &(button, d, n) in &captures.buttons {
+            if let Some(src) = source(d) {
+                self.assign(
+                    button,
+                    Binding {
+                        source: src,
+                        button: n,
+                    },
+                );
+            }
+        }
+    }
+
+    /// What the menu shows for a control: "AXIS 2", "AUX BUTTON 5" (counted
+    /// from 1, as wheel software shows them), or "-".
+    pub fn describe(&self, action: Action) -> String {
+        let prefix = |src: Source| if src == Source::Aux { "AUX " } else { "" };
+        let pedal = |p: &Option<(Source, PedalAxis)>| {
+            p.map_or("-".to_string(), |(src, axis)| {
+                format!("{}AXIS {}", prefix(src), axis.axis + 1)
+            })
+        };
+        match action {
+            Action::Accelerate => pedal(&self.gas),
+            Action::Brake => pedal(&self.brake),
+            Action::Press(button) => self.binding(button).map_or("-".to_string(), |b| {
+                format!("{}BUTTON {}", prefix(b.source), b.button + 1)
+            }),
         }
     }
 
@@ -340,7 +424,7 @@ impl WheelProfile {
             }
         }
         for (button, bind) in &self.buttons {
-            ini.set(&format!("btn_{}", button_key(*button)), &bind.format());
+            ini.set(&format!("btn_{}", button.key()), &bind.format());
         }
         ini
     }
@@ -377,7 +461,7 @@ impl WheelProfile {
         let mut buttons = Vec::new();
         for button in Button::ALL {
             if let Some(b) = ini
-                .get(&format!("btn_{}", button_key(button)))
+                .get(&format!("btn_{}", button.key()))
                 .and_then(Binding::parse)
             {
                 buttons.push((button, b));
@@ -398,17 +482,13 @@ impl WheelProfile {
     }
 }
 
-fn button_key(b: Button) -> &'static str {
-    match b {
-        Button::Light => "light",
-        Button::Wiper => "wiper",
-        Button::Start => "start",
-        Button::Coin => "coin",
-        Button::Service => "service",
-        Button::Test => "test",
-        Button::Pause => "pause",
-        Button::Exit => "exit",
-    }
+/// Whether `pedal` reads the same axis the same way as `other`. Two pedals
+/// on one axis in opposite directions are a combined pedal axis and fine.
+fn same_pedal(pedal: Option<(Source, PedalAxis)>, other: (Source, PedalAxis)) -> bool {
+    let direction = |p: PedalAxis| (i32::from(p.peak) - i32::from(p.rest)).signum();
+    pedal.is_some_and(|(src, p)| {
+        src == other.0 && p.axis == other.1.axis && direction(p) == direction(other.1)
+    })
 }
 
 /// Pedals rest at one end of their axis while the steering rests near the
@@ -463,6 +543,8 @@ pub struct PadState {
     pub guide: bool,
     pub left_shoulder: bool,
     pub right_shoulder: bool,
+    pub left_stick: bool,
+    pub right_stick: bool,
     pub dpad_left: bool,
     pub dpad_right: bool,
     /// For menu navigation only.
@@ -482,6 +564,8 @@ pub struct PadSettings {
     /// The stick asks for an angle to the road instead of moving the
     /// cabinet wheel directly ([`crate::assist`]).
     pub steer_assist: bool,
+    /// Which pad buttons and triggers drive the other controls.
+    pub map: PadMap,
 }
 
 impl Default for PadSettings {
@@ -492,13 +576,17 @@ impl Default for PadSettings {
             trigger_deadzone: 12,
             trigger_linearity: 0,
             steer_assist: true,
+            map: PadMap::default(),
         }
     }
 }
 
-/// Gamepad layout: left stick steers (d-pad too), right trigger or A
-/// accelerates, left trigger or B brakes, X lights, Y wiper, Start starts,
-/// Back inserts a coin, Back + Start (or Guide) returns to the menu.
+/// A gamepad's cabinet controls. The left stick (or the d-pad) steers;
+/// everything else follows [`PadSettings::map`], by default right trigger
+/// or A accelerates, left trigger or B brakes, X or LB lights, Y or RB
+/// wiper, Start starts, Back inserts a coin and Guide returns to the menu.
+/// Back + Start together always returns to the menu, and while the menu
+/// is asked for, Start and Coin are not pressed.
 pub fn read_pad(settings: &PadSettings, pad: &PadState) -> Cabinet {
     let stick = shape(
         f32::from(pad.left_x) / RAW_MAX,
@@ -510,36 +598,39 @@ pub fn read_pad(settings: &PadSettings, pad: &PadState) -> Cabinet {
         (false, true) => 1.0,
         _ => 0.0,
     };
-    let trigger = |v: i16, digital: bool| {
-        let analog = shape(
-            f32::from(v.max(0)) / RAW_MAX,
-            f32::from(settings.trigger_deadzone) / 255.0,
-            settings.trigger_linearity,
-        );
-        if digital { 1.0 } else { analog }
+    // a trigger is a pedal through its deadzone and curve; a button floors it
+    let pedal = |action: Action| {
+        settings
+            .map
+            .inputs(action)
+            .map(|input| match input.trigger(pad) {
+                Some(pull) => shape(
+                    pull,
+                    f32::from(settings.trigger_deadzone) / 255.0,
+                    settings.trigger_linearity,
+                ),
+                None if input.is_down(pad) => 1.0,
+                None => 0.0,
+            })
+            .fold(0.0, f32::max)
     };
     let mut cab = Cabinet {
         steer: if dpad != 0.0 { dpad } else { stick },
-        accel: trigger(pad.right_trigger, pad.a),
-        brake: trigger(pad.left_trigger, pad.b),
+        accel: pedal(Action::Accelerate),
+        brake: pedal(Action::Brake),
         buttons: 0,
     };
-    let exit = pad.guide || (pad.back && pad.start);
-    if exit {
-        cab.press(Button::Exit);
-    } else {
-        if pad.start {
-            cab.press(Button::Start);
+    let exit = (pad.back && pad.start) || settings.map.is_down(Action::Press(Button::Exit), pad);
+    for button in Button::ALL {
+        let held = settings.map.is_down(Action::Press(button), pad);
+        let pressed = match button {
+            Button::Exit => exit,
+            Button::Start | Button::Coin => held && !exit,
+            _ => held,
+        };
+        if pressed {
+            cab.press(button);
         }
-        if pad.back {
-            cab.press(Button::Coin);
-        }
-    }
-    if pad.x || pad.left_shoulder {
-        cab.press(Button::Light);
-    }
-    if pad.y || pad.right_shoulder {
-        cab.press(Button::Wiper);
     }
     cab
 }
@@ -547,6 +638,7 @@ pub fn read_pad(settings: &PadSettings, pad: &PadState) -> Cabinet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pad_map::PadInput;
 
     fn approx(a: f32, b: f32) -> bool {
         (a - b).abs() < 1e-3
@@ -756,12 +848,12 @@ mod tests {
             pid: 0x6204,
             guid: "abc".into(),
         });
-        profile.bind(
+        profile.assign(
             Button::Exit,
-            Some(Binding {
+            Binding {
                 source: Source::Aux,
                 button: 3,
-            }),
+            },
         );
         let text = profile.to_ini().to_string();
         let back = WheelProfile::from_ini(&Ini::parse(&text)).unwrap();
@@ -808,5 +900,138 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(read_pad(&s, &drift).steer, 0.0);
+    }
+
+    #[test]
+    fn unknown_wheels_get_the_generic_paddles() {
+        let id = DeviceId {
+            name: "Some Wheel".into(),
+            vid: 0x1234,
+            pid: 0x0001,
+            guid: String::new(),
+        };
+        let profile = WheelProfile::guess(id, &DeviceState::default());
+        assert_eq!(profile.describe(Action::Press(Button::Light)), "BUTTON 1");
+        assert_eq!(profile.describe(Action::Press(Button::Wiper)), "BUTTON 2");
+        assert_eq!(profile.describe(Action::Press(Button::Start)), "-");
+    }
+
+    #[test]
+    fn a_remapped_wheel_button_leaves_its_old_control() {
+        let mut profile = WheelProfile::guess(csl(), &DeviceState::default());
+        let paddle = profile.binding(Button::Light).unwrap();
+        profile.assign(Button::Start, paddle);
+        assert_eq!(profile.binding(Button::Start), Some(paddle));
+        assert_eq!(profile.binding(Button::Light), None);
+    }
+
+    #[test]
+    fn captures_from_a_second_device_make_it_the_aux() {
+        let pedals = DeviceId {
+            name: "Pedals".into(),
+            vid: 0x0eb7,
+            pid: 0x6204,
+            guid: "p".into(),
+        };
+        let mut profile = WheelProfile::guess(csl(), &DeviceState::default());
+        let gas = PedalAxis {
+            axis: 1,
+            rest: 32_767,
+            peak: -32_768,
+        };
+        let captures = wizard::Captures {
+            gas: Some((1, gas)),
+            buttons: vec![(Button::Coin, 0, 7)],
+            ..Default::default()
+        };
+        profile.apply(&captures, &[csl(), pedals.clone()]);
+        assert_eq!(profile.aux, Some(pedals));
+        assert_eq!(profile.describe(Action::Accelerate), "AUX AXIS 2");
+        assert_eq!(profile.describe(Action::Press(Button::Coin)), "BUTTON 8");
+
+        // pedals moved back onto the wheel: the old aux and its pedal go
+        let mut moved = profile.clone();
+        moved.forget_aux();
+        assert_eq!(moved.aux, None);
+        assert_eq!(moved.describe(Action::Accelerate), "-");
+        assert_eq!(moved.describe(Action::Press(Button::Coin)), "BUTTON 8");
+    }
+
+    #[test]
+    fn a_pedal_moved_onto_the_other_pedals_axis_takes_it_over() {
+        let at_top = |axis| PedalAxis {
+            axis,
+            rest: 32_767,
+            peak: -32_768,
+        };
+        let mut profile = WheelProfile::guess(csl(), &DeviceState::default());
+        profile.gas = Some((Source::Wheel, at_top(1)));
+        profile.brake = Some((Source::Wheel, at_top(2)));
+        let captures = wizard::Captures {
+            gas: Some((0, at_top(2))),
+            ..Default::default()
+        };
+        profile.apply(&captures, &[csl()]);
+        assert_eq!(profile.describe(Action::Accelerate), "AXIS 3");
+        assert_eq!(profile.describe(Action::Brake), "-");
+
+        // one axis, opposite directions: a combined pedal axis keeps both
+        let mut combined = WheelProfile::guess(csl(), &DeviceState::default());
+        combined.brake = Some((
+            Source::Wheel,
+            PedalAxis {
+                axis: 1,
+                rest: 0,
+                peak: 32_767,
+            },
+        ));
+        let captures = wizard::Captures {
+            gas: Some((
+                0,
+                PedalAxis {
+                    axis: 1,
+                    rest: 0,
+                    peak: -32_768,
+                },
+            )),
+            ..Default::default()
+        };
+        combined.apply(&captures, &[csl()]);
+        assert_eq!(combined.describe(Action::Brake), "AXIS 2");
+    }
+
+    #[test]
+    fn a_remapped_pad_follows_its_map() {
+        let mut s = PadSettings::default();
+        s.map.assign(Action::Accelerate, PadInput::RightShoulder);
+        s.map.assign(Action::Press(Button::Light), PadInput::A);
+        let pad = PadState {
+            right_shoulder: true,
+            a: true,
+            right_trigger: 32_767,
+            ..Default::default()
+        };
+        let cab = read_pad(&s, &pad);
+        // RB is the accelerator now, A the lights; RT does nothing
+        assert_eq!(cab.accel, 1.0);
+        assert!(cab.is_pressed(Button::Light) && !cab.is_pressed(Button::Wiper));
+        let trigger_only = PadState {
+            right_trigger: 32_767,
+            ..Default::default()
+        };
+        assert_eq!(read_pad(&s, &trigger_only).accel, 0.0);
+    }
+
+    #[test]
+    fn back_and_start_leave_the_game_whatever_is_bound() {
+        let mut s = PadSettings::default();
+        s.map.set(Action::Press(Button::Exit), &[]);
+        let pad = PadState {
+            back: true,
+            start: true,
+            ..Default::default()
+        };
+        let cab = read_pad(&s, &pad);
+        assert!(cab.is_pressed(Button::Exit) && !cab.is_pressed(Button::Start));
     }
 }

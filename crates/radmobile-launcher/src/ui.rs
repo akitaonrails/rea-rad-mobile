@@ -8,11 +8,12 @@ use std::time::{Duration, Instant};
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2,
 };
-use radmobile_core::controls::Button;
+use radmobile_core::controls::{Action, Button};
 use radmobile_core::ini::Ini;
+use radmobile_core::pad_map::{Capture, PadCapture, PadMap};
 use radmobile_core::settings::{self as cfg, InputMode, Settings};
-use radmobile_core::wheel::wizard::{self, Status, Wizard};
-use radmobile_core::wheel::{self, Binding, DeviceId, Source, WheelProfile};
+use radmobile_core::wheel::wizard::{Status, Step, Wizard};
+use radmobile_core::wheel::{self, DeviceId, WheelProfile};
 
 use crate::input::{Active, Command, InputService, Kind, Nav, Snapshot};
 use crate::paths::AppPaths;
@@ -39,7 +40,9 @@ enum Screen {
     Video,
     Sound,
     Controller,
+    PadMap,
     Wheel,
+    WheelMap,
     Game,
     Roms,
     Wizard,
@@ -54,7 +57,9 @@ impl Screen {
             Screen::Video => "VIDEO SETTINGS",
             Screen::Sound => "SOUND SETTINGS",
             Screen::Controller => "CONTROLLER SETTINGS",
+            Screen::PadMap => "GAMEPAD BUTTONS",
             Screen::Wheel => "WHEEL SETTINGS",
+            Screen::WheelMap => "WHEEL BUTTONS",
             Screen::Game => "GAME SETTINGS",
             Screen::Roms => "ROMS",
             Screen::Wizard => "WHEEL SETUP",
@@ -66,7 +71,8 @@ impl Screen {
         match self {
             Screen::Main | Screen::Running => None,
             Screen::Settings => Some(Screen::Main),
-            Screen::Wizard => Some(Screen::Wheel),
+            Screen::Wizard | Screen::WheelMap => Some(Screen::Wheel),
+            Screen::PadMap => Some(Screen::Controller),
             _ => Some(Screen::Settings),
         }
     }
@@ -103,6 +109,9 @@ enum Item {
     InvertAccel,
     InvertBrake,
     ResetWheel,
+    /// Press A, then the new button or pedal for this control.
+    Map(Action),
+    ResetPadMap,
     Region,
     Preset,
     Difficulty,
@@ -143,6 +152,7 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
         Screen::Controller => vec![
             InputDevice,
             SteerAssist,
+            Open(Screen::PadMap),
             StickDeadzone,
             StickLinearity,
             TriggerDeadzone,
@@ -156,6 +166,7 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
             FfbInvert,
             SteeringLock,
             WheelSetup,
+            Open(Screen::WheelMap),
             TestFfb,
             InvertAccel,
             InvertBrake,
@@ -175,6 +186,16 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
             CreditsContinue,
             Back,
         ],
+        Screen::PadMap => Action::ALL
+            .into_iter()
+            .map(Map)
+            .chain([ResetPadMap, Back])
+            .collect(),
+        Screen::WheelMap => Action::ALL
+            .into_iter()
+            .map(Map)
+            .chain([ResetWheel, Back])
+            .collect(),
         Screen::Roms => vec![RomFolder, Rescan, Back],
         Screen::Wizard | Screen::Running => vec![],
     }
@@ -218,7 +239,9 @@ fn label(item: Item) -> &'static str {
         TestFfb => "TEST FORCE FEEDBACK",
         InvertAccel => "INVERT ACCEL",
         InvertBrake => "INVERT BRAKE",
-        ResetWheel => "FORGET WHEEL SETUP",
+        ResetWheel => "RESET WHEEL TO AUTOMATIC",
+        Map(action) => action.label(),
+        ResetPadMap => "RESET TO DEFAULTS",
         Region => "REGION",
         Difficulty => "DIFFICULTY",
         Preset => "PRESET",
@@ -268,10 +291,20 @@ fn help(item: Item) -> &'static str {
         }
         FfbInvert => "Flip the force direction if the wheel pushes the wrong way.",
         SteeringLock => "Degrees of wheel rotation for full lock. 270 matches the arcade cabinet.",
-        WheelSetup => "Press each pedal and button when asked. Steering is detected automatically.",
+        WheelSetup => {
+            "Press each pedal and button when asked. Steering is detected automatically. To change one control, use WHEEL BUTTONS."
+        }
         TestFfb => "Push the wheel left, then right.",
         InvertAccel | InvertBrake => "Flip a pedal that reads backwards.",
-        ResetWheel => "Go back to the automatic wheel setup.",
+        ResetWheel => {
+            "Forget the wheel setup and button mapping: steering, pedals and shift paddles as detected."
+        }
+        Map(_) => {
+            "Select, then press the button (or pedal) to use. Esc, or waiting a few seconds, keeps it."
+        }
+        ResetPadMap => {
+            "RT or A accelerates, LT or B brakes, X or LB lights, Y or RB wiper, Start, Back adds a coin, Guide returns to the menu."
+        }
         Region => "World or US set, when you have both.",
         Difficulty => "The arcade's difficulty, 1 (easy) to 16 (hard). 8 is the factory setting.",
         Preset => {
@@ -316,6 +349,8 @@ fn screen_by_name(name: &str) -> Screen {
         "video" => Screen::Video,
         "sound" => Screen::Sound,
         "controller" => Screen::Controller,
+        "padmap" => Screen::PadMap,
+        "wheelmap" => Screen::WheelMap,
         "wheel" => Screen::Wheel,
         "game" => Screen::Game,
         "roms" => Screen::Roms,
@@ -343,6 +378,26 @@ struct WizardRun {
     done_at: Option<Instant>,
 }
 
+/// Waiting for the new pad input, or wheel button or pedal, of one control.
+struct Remap {
+    action: Action,
+    started: Instant,
+    on: RemapOn,
+}
+
+enum RemapOn {
+    Pad(PadCapture),
+    /// A one-step wizard over the wheel and the devices beside it.
+    Wheel {
+        wizard: Box<Wizard>,
+        devices: Vec<(usize, DeviceId)>,
+    },
+}
+
+/// After a capture, menu input is ignored this long, so the press that was
+/// just captured does not also act on the menu.
+const REMAP_QUIET: Duration = Duration::from_millis(400);
+
 pub struct App {
     paths: AppPaths,
     settings: Settings,
@@ -353,6 +408,11 @@ pub struct App {
     rom: RomStatus,
     child: Option<Child>,
     wizard: Option<WizardRun>,
+    remap: Option<Remap>,
+    /// Menu input is ignored until then (see [`REMAP_QUIET`]).
+    quiet_until: Option<Instant>,
+    /// What the remap row shows while waiting.
+    remap_status: Option<String>,
     rom_dir_text: String,
     message: Option<(String, Color32, Instant)>,
     snapshot: Snapshot,
@@ -383,6 +443,9 @@ impl App {
             rom,
             child: None,
             wizard: None,
+            remap: None,
+            quiet_until: None,
+            remap_status: None,
             rom_dir_text,
             message: None,
             snapshot: Snapshot::default(),
@@ -532,11 +595,13 @@ impl App {
         }
     }
 
-    fn start_wizard(&mut self) {
+    /// The wheel in use and up to three other non-pad devices (separate
+    /// pedals, a button box), in the order the wizard sees them.
+    fn wheel_devices(&mut self) -> Option<Vec<(usize, DeviceId)>> {
         let snap = &self.snapshot;
         let Active::Wheel(w) = snap.active else {
             self.say("CONNECT A WHEEL AND TRY AGAIN", BAD);
-            return;
+            return None;
         };
         let mut devices = vec![(w, snap.devices[w].id.clone())];
         devices.extend(
@@ -547,7 +612,44 @@ impl App {
                 .take(3)
                 .map(|(i, d)| (i, d.id.clone())),
         );
-        let steer_axis = snap.profile.as_ref().map_or(0, |p| p.steer_axis);
+        Some(devices)
+    }
+
+    fn steer_axis(&self) -> usize {
+        self.snapshot.profile.as_ref().map_or(0, |p| p.steer_axis)
+    }
+
+    /// The readings of `devices` (indices into the snapshot).
+    fn device_states(&self, devices: &[(usize, DeviceId)]) -> Vec<wheel::DeviceState> {
+        devices
+            .iter()
+            .map(|(i, _)| self.snapshot.states.get(*i).cloned().unwrap_or_default())
+            .collect()
+    }
+
+    /// The wheel profile in use (saved or detected) for the wizard's wheel.
+    fn base_profile(&self, devices: &[(usize, DeviceId)]) -> WheelProfile {
+        let (index, id) = &devices[0];
+        let mut profile = self.snapshot.profile.clone().unwrap_or_else(|| {
+            WheelProfile::guess(
+                id.clone(),
+                &self
+                    .snapshot
+                    .states
+                    .get(*index)
+                    .cloned()
+                    .unwrap_or_default(),
+            )
+        });
+        profile.wheel = id.clone();
+        profile
+    }
+
+    fn start_wizard(&mut self) {
+        let Some(devices) = self.wheel_devices() else {
+            return;
+        };
+        let steer_axis = self.steer_axis();
         self.wizard = Some(WizardRun {
             wizard: Wizard::new(steer_axis),
             started: Instant::now(),
@@ -559,66 +661,126 @@ impl App {
     }
 
     fn tick_wizard(&mut self) {
-        let Some(run) = self.wizard.as_mut() else {
+        let Some(run) = self.wizard.as_ref() else {
             return;
         };
         if run.done_at.is_some() {
             return;
         }
-        let states: Vec<_> = run
-            .devices
-            .iter()
-            .map(|(i, _)| self.snapshot.states.get(*i).cloned().unwrap_or_default())
-            .collect();
-        run.status = run
-            .wizard
-            .tick(run.started.elapsed().as_millis() as u64, &states);
+        let states = self.device_states(&run.devices);
+        let elapsed = run.started.elapsed().as_millis() as u64;
+        let Some(run) = self.wizard.as_mut() else {
+            return;
+        };
+        run.status = run.wizard.tick(elapsed, &states);
         if let Status::Done(captures) = run.status.clone() {
             run.done_at = Some(Instant::now());
-            let wheel_id = run.devices[0].1.clone();
-            let mut profile = self.snapshot.profile.clone().unwrap_or_else(|| {
-                WheelProfile::guess(
-                    wheel_id.clone(),
-                    &self
-                        .snapshot
-                        .states
-                        .get(run.devices[0].0)
-                        .cloned()
-                        .unwrap_or_default(),
-                )
-            });
-            profile.wheel = wheel_id;
-            // the first other device used becomes the aux device
-            let aux_index = captures
-                .gas
-                .map(|(d, _)| d)
-                .into_iter()
-                .chain(captures.brake.map(|(d, _)| d))
-                .chain(captures.buttons.iter().map(|(_, d, _)| *d))
-                .find(|d| *d != 0);
-            profile.aux = aux_index.map(|d| run.devices[d].1.clone());
-            let source = |d: usize| if d == 0 { Source::Wheel } else { Source::Aux };
-            let usable = |d: usize| d == 0 || Some(d) == aux_index;
-            if let Some((d, p)) = captures.gas.filter(|(d, _)| usable(*d)) {
-                profile.gas = Some((source(d), p));
-            }
-            if let Some((d, p)) = captures.brake.filter(|(d, _)| usable(*d)) {
-                profile.brake = Some((source(d), p));
-            }
-            for (button, d, b) in captures.buttons.iter().filter(|(_, d, _)| usable(*d)) {
-                profile.bind(
-                    *button,
-                    Some(Binding {
-                        source: source(*d),
-                        button: *b,
-                    }),
-                );
-            }
+            let devices = run.devices.clone();
+            let mut profile = self.base_profile(&devices);
+            // a full setup starts over on the second device
+            profile.forget_aux();
+            let ids: Vec<DeviceId> = devices.into_iter().map(|(_, id)| id).collect();
+            profile.apply(&captures, &ids);
             self.profile = Some(profile);
             self.settings.wheel.invert_accel = false;
             self.settings.wheel.invert_brake = false;
             self.save_profile();
             crate::log::line(&format!("wizard: done, skipped {:?}", captures.skipped));
+        }
+    }
+
+    /// Start waiting for the new input of `action` on this screen's device.
+    fn start_remap(&mut self, action: Action) {
+        let on = if self.screen == Screen::PadMap {
+            if self.snapshot.pads.is_empty() {
+                self.say("CONNECT A GAMEPAD AND TRY AGAIN", BAD);
+                return;
+            }
+            RemapOn::Pad(PadCapture::default())
+        } else {
+            let Some(devices) = self.wheel_devices() else {
+                return;
+            };
+            let step = match action {
+                Action::Accelerate => Step::Accelerator,
+                Action::Brake => Step::Brake,
+                Action::Press(b) => Step::Button(b),
+            };
+            RemapOn::Wheel {
+                wizard: Box::new(Wizard::single(step, self.steer_axis())),
+                devices,
+            }
+        };
+        self.remap = Some(Remap {
+            action,
+            started: Instant::now(),
+            on,
+        });
+        self.remap_status = Some("PRESS…".into());
+    }
+
+    fn end_remap(&mut self, message: String, color: Color32) {
+        self.remap = None;
+        self.remap_status = None;
+        self.quiet_until = Some(Instant::now() + REMAP_QUIET);
+        self.say(message, color);
+    }
+
+    fn tick_remap(&mut self, ctx: &egui::Context) {
+        let Some(remap) = self.remap.as_ref() else {
+            return;
+        };
+        let action = remap.action;
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.end_remap(format!("{} UNCHANGED", action.label()), DIM);
+            return;
+        }
+        let elapsed = remap.started.elapsed().as_millis() as u64;
+        let states = match &remap.on {
+            RemapOn::Wheel { devices, .. } => self.device_states(devices),
+            RemapOn::Pad(_) => Vec::new(),
+        };
+        let pads = self.snapshot.pads.clone();
+        let Some(remap) = self.remap.as_mut() else {
+            return;
+        };
+        match &mut remap.on {
+            RemapOn::Pad(capture) => match capture.tick(elapsed, &pads) {
+                Capture::Got(input) => {
+                    self.settings.pad.map.assign(action, input);
+                    self.save();
+                    self.end_remap(format!("{} SET TO {}", action.label(), input.label()), OK);
+                }
+                Capture::TimedOut => self.end_remap(
+                    format!("NOTHING PRESSED - {} UNCHANGED", action.label()),
+                    DIM,
+                ),
+                Capture::Releasing => self.remap_status = Some("LET GO…".into()),
+                Capture::Waiting { remaining_ms } => {
+                    self.remap_status = Some(format!("PRESS… {}", remaining_ms.div_ceil(1000)))
+                }
+            },
+            RemapOn::Wheel { wizard, devices } => match wizard.tick(elapsed, &states) {
+                Status::Done(captures) if captures.skipped.is_empty() => {
+                    let devices = devices.clone();
+                    let mut profile = self.base_profile(&devices);
+                    let ids: Vec<DeviceId> = devices.into_iter().map(|(_, id)| id).collect();
+                    profile.apply(&captures, &ids);
+                    let shown = profile.describe(action);
+                    self.profile = Some(profile);
+                    self.save_profile();
+                    self.end_remap(format!("{} SET TO {shown}", action.label()), OK);
+                }
+                Status::Done(_) => self.end_remap(
+                    format!("NOTHING PRESSED - {} UNCHANGED", action.label()),
+                    DIM,
+                ),
+                Status::Waiting { remaining_ms, .. } => {
+                    self.remap_status = Some(format!("PRESS… {}", remaining_ms.div_ceil(1000)))
+                }
+                Status::Pressing { .. } => self.remap_status = Some("NOW LET GO".into()),
+                Status::WarmingUp => {}
+            },
         }
     }
 
@@ -725,7 +887,15 @@ impl App {
                 changed = false;
                 self.profile = None;
                 self.save_profile();
-                self.say("WHEEL SETUP CLEARED", OK);
+                self.say("WHEEL BACK TO AUTOMATIC SETUP", OK);
+            }
+            Map(action) if d == 0 => {
+                changed = false;
+                self.start_remap(action);
+            }
+            ResetPadMap if d == 0 => {
+                s.pad.map = PadMap::default();
+                self.say("GAMEPAD BUTTONS BACK TO DEFAULTS", OK);
             }
             RomFolder if d == 0 => {
                 changed = false;
@@ -800,12 +970,30 @@ impl App {
             FreePlay => on_off(s.game.free_play),
             CreditsStart => format!("{}", s.game.credits_to_start),
             CreditsContinue => format!("{}", s.game.credits_to_continue),
+            Map(action) => {
+                if let Some(remap) = &self.remap
+                    && remap.action == action
+                {
+                    return self.remap_status.clone();
+                }
+                if self.screen == Screen::PadMap {
+                    s.pad.map.describe(action)
+                } else {
+                    match &self.snapshot.profile {
+                        Some(profile) => profile.describe(action),
+                        None => "NO WHEEL".into(),
+                    }
+                }
+            }
             _ => return None,
         })
     }
 
     fn handle_nav(&mut self, nav: Nav, ctx: &egui::Context) {
-        if self.screen == Screen::Running {
+        if self.screen == Screen::Running
+            || self.remap.is_some()
+            || self.quiet_until.is_some_and(|t| Instant::now() < t)
+        {
             return;
         }
         if self.screen == Screen::Wizard {
@@ -845,6 +1033,7 @@ impl eframe::App for App {
         self.screenshot_step(&ctx);
         self.poll_child();
         self.tick_wizard();
+        self.tick_remap(&ctx);
 
         let mut navs: Vec<Nav> = self.input.nav.try_iter().collect();
         let typing = self.screen == Screen::Roms && ctx.memory(|m| m.focused().is_some());
@@ -1020,7 +1209,10 @@ impl App {
         );
 
         // content window
-        let side = self.screen == Screen::Wheel || self.screen == Screen::Controller;
+        let side = matches!(
+            self.screen,
+            Screen::Wheel | Screen::Controller | Screen::PadMap | Screen::WheelMap
+        );
         let content_w = if side {
             r_width * 0.5
         } else {
@@ -1104,6 +1296,8 @@ impl App {
             device_line.1,
         );
         let hints = match self.screen {
+            _ if self.remap.is_some() => "PRESS THE NEW BUTTON   ESC: CANCEL",
+            Screen::PadMap | Screen::WheelMap => "A: REMAP   B: BACK",
             Screen::Running => "",
             Screen::Wizard => "B: CANCEL",
             Screen::Main => "A: SELECT   B: QUIT",
@@ -1206,7 +1400,9 @@ impl App {
                 color,
             );
             if let Some(v) = self.value(*item) {
-                let v = if selected { format!("<  {v}  >") } else { v };
+                // a mapping row is not changed with left and right
+                let arrows = selected && !matches!(item, Item::Map(_));
+                let v = if arrows { format!("<  {v}  >") } else { v };
                 text(
                     &p,
                     Pos2::new(row.right() - unit * 2.0, row.center().y),
@@ -1309,7 +1505,7 @@ impl App {
                 format!(
                     "STEP {} OF {}   TIMEOUT SKIPS IN {}s",
                     index + 1,
-                    wizard::STEPS.len(),
+                    run.wizard.step_count(),
                     remaining_ms / 1000 + 1
                 ),
                 0.0,
@@ -1320,7 +1516,11 @@ impl App {
                 travel,
             } => (
                 step.prompt().to_uppercase(),
-                format!("STEP {} OF {}   NOW LET GO", index + 1, wizard::STEPS.len()),
+                format!(
+                    "STEP {} OF {}   NOW LET GO",
+                    index + 1,
+                    run.wizard.step_count()
+                ),
                 *travel,
             ),
             Status::Done(c) => (
@@ -1489,7 +1689,9 @@ mod tests {
             Screen::Video,
             Screen::Sound,
             Screen::Controller,
+            Screen::PadMap,
             Screen::Wheel,
+            Screen::WheelMap,
             Screen::Game,
             Screen::Roms,
         ] {
@@ -1533,5 +1735,21 @@ mod tests {
         assert_eq!(screen_by_name("nonsense"), Screen::Main);
         assert_eq!(Screen::Wizard.parent(), Some(Screen::Wheel));
         assert_eq!(Screen::Video.parent(), Some(Screen::Settings));
+        assert_eq!(screen_by_name("padmap"), Screen::PadMap);
+        assert_eq!(Screen::PadMap.parent(), Some(Screen::Controller));
+        assert_eq!(Screen::WheelMap.parent(), Some(Screen::Wheel));
+    }
+
+    #[test]
+    fn every_control_can_be_remapped_on_both_devices() {
+        let s = Settings::default();
+        for screen in [Screen::PadMap, Screen::WheelMap] {
+            let list = items(screen, &s);
+            for action in Action::ALL {
+                assert!(list.contains(&Item::Map(action)), "{screen:?} {action:?}");
+            }
+        }
+        assert!(items(Screen::Controller, &s).contains(&Item::Open(Screen::PadMap)));
+        assert!(items(Screen::Wheel, &s).contains(&Item::Open(Screen::WheelMap)));
     }
 }

@@ -13,9 +13,9 @@ support with force feedback.
 | | |
 |---|---|
 | Video | Desktop, 1080p, 1440p or 4K rendering; fullscreen or window; 4:3, stretch, or **true widescreen** (the game draws more of the road at 16:9, 16:10 or ~21:9); Sharp, Smooth, CRT and CRT Deluxe filters; brightness; vsync |
-| Wheels | Logitech, Thrustmaster, Fanatec (CSL DD, CSL Elite…), MOZA and generic wheels; steering lock (180–900°, Full; 270° default) computed from the wheel's rotation; separate pedal devices; a setup wizard for pedals and buttons; pedal calibration and invert |
+| Wheels | Logitech, Thrustmaster, Fanatec (CSL DD, CSL Elite…), MOZA and generic wheels; steering lock (180–900°, Full; 270° default) computed from the wheel's rotation; separate pedal devices; a setup wizard for pedals and buttons and a WHEEL BUTTONS page to remap any one of them; pedal calibration and invert |
 | Force feedback | Synthetic, from the car's state read out of the game: speed-dependent centring and damping, barrier scrape, crash jolts; strength and invert; Wanszai's effect keepalive; gamepad rumble |
-| Gamepads | Assisted stick steering (the stick moves the car across the road; centred, it follows the road through bends) or arcade steering; stick and trigger deadzone and curve (Linear … Cubic) |
+| Gamepads | Assisted stick steering (the stick moves the car across the road; centred, it follows the road through bends) or arcade steering; stick and trigger deadzone and curve (Linear … Cubic); every button and trigger remappable (GAMEPAD BUTTONS) |
 | Arcade settings | Difficulty, starting timer, rival and police car speed, free play, credits, attract sound — written into the game's EEPROM; a longer race clock (1.5×–3×); ARCADE and EASY presets |
 | ROMs | Found by content under any file name; old sets without the factory EEPROM work |
 

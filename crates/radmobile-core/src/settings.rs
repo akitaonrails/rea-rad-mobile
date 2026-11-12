@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use crate::eeprom::GameSettings;
 use crate::ffb::FfbSettings;
 use crate::ini::Ini;
+use crate::pad_map::PadMap;
 use crate::wheel::{PadSettings, SteeringLock, WheelSettings};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -396,6 +397,7 @@ impl Settings {
                 trigger_linearity: num("trigger_linearity", d.pad.trigger_linearity.into(), 0, 100)
                     as u8,
                 steer_assist: flag("steer_assist", d.pad.steer_assist),
+                map: PadMap::from_ini(ini),
             },
             ffb: FfbSettings {
                 strength: num("ffb_strength", d.ffb.strength.into(), 0, 100) as u8,
@@ -470,6 +472,7 @@ impl Settings {
         ini.set("trigger_deadzone", &self.pad.trigger_deadzone.to_string());
         ini.set("trigger_linearity", &self.pad.trigger_linearity.to_string());
         ini.set("steer_assist", b(self.pad.steer_assist));
+        self.pad.map.write_ini(&mut ini);
         ini.set("ffb_strength", &self.ffb.strength.to_string());
         ini.set("ffb_invert", b(self.ffb.invert));
         ini.set("rumble_strength", &self.ffb.rumble.to_string());
@@ -488,6 +491,9 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::controls::Action;
+    use crate::controls::Button;
+    use crate::pad_map::PadInput;
 
     #[test]
     fn defaults_follow_wanszai() {
@@ -528,6 +534,11 @@ mod tests {
             pad: PadSettings {
                 stick_linearity: 40,
                 steer_assist: false,
+                map: {
+                    let mut map = PadMap::default();
+                    map.assign(Action::Press(Button::Pause), PadInput::RightStick);
+                    map
+                },
                 ..Default::default()
             },
             ffb: FfbSettings {

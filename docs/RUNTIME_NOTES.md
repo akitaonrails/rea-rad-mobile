@@ -24,6 +24,7 @@ What has been verified running, how, and what has not.
 | Race clock | `REA_RADM_TIME_SCALE=200`, RAM logged | Step `0x888` → `0x444`; the timer loses a second every two; checkpoint bonuses unchanged in seconds |
 | Player game flag | RAM over a race through the first checkpoint | `0x2018AF` clears at the first checkpoint (so 0.1.1 dropped the assist and FFB there); `0x20F00A` holds until after game over |
 | Light and Wiper from a pad or wheel | Headless MAME, bridge button bits pressed from Python, Lua logging port `:mainpcb:P1_A` | 0.2.0: the port never changed (`ff`); the fields listened to Space and Left Shift only. With the game-specific controller section: `fd` for Light, `fb` for Wiper |
+| Button remapping | Launcher under Xvfb with `scripts/dev/fake-pad.py` (d-pad and A driving the menu) and `scripts/dev/fake-wheel.py` | Pad: LIGHTS remapped to R3 (`pad_light=r3`; the A press that opened the capture was not taken). Wheel: START to button 10 (`btn_start=wheel:9`), ACCELERATOR to the brake pedal's axis, which then left the brake |
 | Linux package | `dist/pkg/…-linux-x86_64.tar.gz` (bookworm build, glibc ≥ 2.36) on Arch, with the virtual wheel | Wheel, FFB (1414 force updates in one race), Exit button; menu renders |
 
 ## Not verified yet

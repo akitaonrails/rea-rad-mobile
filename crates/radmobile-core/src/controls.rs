@@ -72,6 +72,20 @@ impl Button {
         }
     }
 
+    /// The name in settings files.
+    pub fn key(self) -> &'static str {
+        match self {
+            Button::Light => "light",
+            Button::Wiper => "wiper",
+            Button::Start => "start",
+            Button::Coin => "coin",
+            Button::Service => "service",
+            Button::Test => "test",
+            Button::Pause => "pause",
+            Button::Exit => "exit",
+        }
+    }
+
     /// The keyboard key that keeps working next to the bridge.
     pub fn mame_key(self) -> &'static str {
         match self {
@@ -97,6 +111,64 @@ impl Button {
             Button::Test => "Test menu",
             Button::Pause => "Pause",
             Button::Exit => "Back to menu",
+        }
+    }
+}
+
+/// A cabinet control a player can bind to a pad or a wheel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Action {
+    Accelerate,
+    Brake,
+    Press(Button),
+}
+
+impl Action {
+    /// In menu order.
+    pub const ALL: [Action; 10] = [
+        Action::Accelerate,
+        Action::Brake,
+        Action::Press(Button::Light),
+        Action::Press(Button::Wiper),
+        Action::Press(Button::Start),
+        Action::Press(Button::Coin),
+        Action::Press(Button::Exit),
+        Action::Press(Button::Pause),
+        Action::Press(Button::Service),
+        Action::Press(Button::Test),
+    ];
+
+    pub(crate) const COUNT: usize = Self::ALL.len();
+
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Action::Accelerate => 0,
+            Action::Brake => 1,
+            Action::Press(b) => 2 + b as usize,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Action::Accelerate => "ACCELERATOR",
+            Action::Brake => "BRAKE",
+            Action::Press(Button::Light) => "LIGHTS",
+            Action::Press(Button::Wiper) => "WIPER",
+            Action::Press(Button::Start) => "START",
+            Action::Press(Button::Coin) => "COIN",
+            Action::Press(Button::Exit) => "BACK TO MENU",
+            Action::Press(Button::Pause) => "PAUSE",
+            Action::Press(Button::Service) => "SERVICE",
+            Action::Press(Button::Test) => "TEST MENU",
+        }
+    }
+
+    /// The name in settings files.
+    pub fn key(self) -> &'static str {
+        match self {
+            Action::Accelerate => "accel",
+            Action::Brake => "brake",
+            Action::Press(b) => b.key(),
         }
     }
 }

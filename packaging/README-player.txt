@@ -23,12 +23,17 @@ a gamepad, or Esc.
 WHEELS
 ------
 Wheels are recognised automatically (Logitech, Thrustmaster, Fanatec,
-MOZA and others). Steering works at once; pedals are guessed from where
-they rest. For the best result:
+MOZA and others). Steering works at once, pedals are guessed from where
+they rest, and the shift paddles are the lights and the wiper. Start,
+Coin and Back to menu differ from wheel to wheel, so give them buttons
+once:
 
-  SETTINGS > WHEEL SETTINGS > WHEEL SETUP
-  press each pedal and button when asked (pedals on a separate USB
-  device and button boxes are supported).
+  SETTINGS > WHEEL SETTINGS > WHEEL BUTTONS
+  pick a control, press its new button (or pedal). Pedals on a separate
+  USB device and button boxes work too.
+
+WHEEL SETUP on the same page asks for every pedal and button in turn.
+RESET WHEEL TO AUTOMATIC forgets both.
 
 STEERING LOCK  270 degrees feels like the arcade cabinet. The launcher
                scales your wheel's full rotation, so leave your wheel's
@@ -37,8 +42,10 @@ FFB STRENGTH   Rad Mobile never had a steering motor; the force is made
                from the car's speed, crashes and the barriers.
 INVERT FFB     If the wheel pushes the wrong way.
 
-Gamepads: left stick steers, right trigger accelerates, left trigger
-brakes, X or LB lights, Y or RB wiper, Start starts, Back inserts a coin.
+Gamepads: left stick steers, right trigger or A accelerates, left
+trigger or B brakes, X or LB lights, Y or RB wiper, Start starts, Back
+inserts a coin, Guide (or Back + Start) returns to the menu. Change any
+of them in SETTINGS > CONTROLLER SETTINGS > GAMEPAD BUTTONS.
 STICK STEERING (CONTROLLER page): ASSISTED, the default, makes the stick
 move the car across the road; let go and the car keeps its line, through
 bends too. ARCADE makes the stick the cabinet wheel: the car keeps its
@@ -71,8 +78,8 @@ PRESET         EASY sets the lowest difficulty, the slowest rivals and
 FILES
 -----
 data/settings.ini   your settings
-data/wheel.ini      what WHEEL SETUP learned (hand edits stay until the
-                    setup runs again)
+data/wheel.ini      your wheel's pedals and buttons (hand edits stay
+                    until you remap them in the menu)
 data/launcher.log   what the launcher saw (attach it to bug reports)
 data/mame.log       MAME's output
 

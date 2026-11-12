@@ -214,6 +214,8 @@ impl Device {
                     guide: button(B::SDL_CONTROLLER_BUTTON_GUIDE),
                     left_shoulder: button(B::SDL_CONTROLLER_BUTTON_LEFTSHOULDER),
                     right_shoulder: button(B::SDL_CONTROLLER_BUTTON_RIGHTSHOULDER),
+                    left_stick: button(B::SDL_CONTROLLER_BUTTON_LEFTSTICK),
+                    right_stick: button(B::SDL_CONTROLLER_BUTTON_RIGHTSTICK),
                     dpad_left: button(B::SDL_CONTROLLER_BUTTON_DPAD_LEFT),
                     dpad_right: button(B::SDL_CONTROLLER_BUTTON_DPAD_RIGHT),
                     dpad_up: button(B::SDL_CONTROLLER_BUTTON_DPAD_UP),
