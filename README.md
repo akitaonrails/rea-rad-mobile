@@ -59,7 +59,9 @@ The player guide is [packaging/README-player.txt](packaging/README-player.txt).
 Details: [docs/RESEARCH.md](docs/RESEARCH.md) (Wanszai study, EEPROM map,
 widescreen), [docs/WANSZAI_WHEELS.md](docs/WANSZAI_WHEELS.md),
 [docs/RAM_MAP.md](docs/RAM_MAP.md), [docs/MAME.md](docs/MAME.md),
-[docs/RUNTIME_NOTES.md](docs/RUNTIME_NOTES.md).
+[docs/RUNTIME_NOTES.md](docs/RUNTIME_NOTES.md),
+[docs/STEERING_ASSIST.md](docs/STEERING_ASSIST.md) (how stick steering works and
+what went wrong on the way).
 
 ## Building
 

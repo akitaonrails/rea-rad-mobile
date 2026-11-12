@@ -16,6 +16,26 @@ applied by `scripts/build-mame.sh`. Changes are marked `rea-rad-mobile`.
 | No startup boxes (`REA_SKIP_STARTUP_SCREENS`) | `frontend/mame/ui/ui.cpp`, `emu/romload.cpp` | MAME's "imperfect graphics" box waits for a key; the launcher is the front end |
 | MinGW audio property keys | `osd/modules/sound/mmdevice_helpers.cpp`, `scripts/src/osd/windows.lua` | MinGW has no library defining them |
 
+## The controller file
+
+The launcher writes `ctrlr/rea.cfg` on every start
+(`controls::ctrlr_cfg`). Its `default` section maps MAME's input types
+(P1_PADDLE, P1_BUTTON1, START1, …) to the bridge joystick, keeping MAME's
+keyboard keys beside it.
+
+A `default` section is not enough for the Light and Wiper buttons. The
+`radm` driver gives those two fields their own keys (`PORT_CODE(KEYCODE_SPACE)`,
+`PORT_CODE(KEYCODE_LSHIFT)`), and a key fixed on the field wins over the
+input type's default. Up to 0.2.0 Light and Wiper therefore answered only
+to Space and Left Shift: a gamepad or wheel never turned the lights on,
+though Round 3 asks the player to "Turn on the light". The file now also has a `radm`
+and a `radmu` section that maps those fields by port tag and bit
+(`:mainpcb:P1_A`, 0x02 and 0x04) to the key or the joystick button.
+
+To see what every input of the running game listens to, dump each field's
+`input_seq("standard")` from a Lua script. In 0.2.0 that showed
+`Light | KEYCODE_SPACE` while `1 Player Start | KEYCODE_1 OR JOYCODE_1_BUTTON3`.
+
 ## Changing the patch
 
 ```sh

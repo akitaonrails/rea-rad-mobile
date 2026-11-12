@@ -38,7 +38,7 @@ FFB STRENGTH   Rad Mobile never had a steering motor; the force is made
 INVERT FFB     If the wheel pushes the wrong way.
 
 Gamepads: left stick steers, right trigger accelerates, left trigger
-brakes, X lights, Y wiper, Start starts, Back inserts a coin.
+brakes, X or LB lights, Y or RB wiper, Start starts, Back inserts a coin.
 STICK STEERING (CONTROLLER page): ASSISTED, the default, makes the stick
 move the car across the road; let go and the car keeps its line, through
 bends too. ARCADE makes the stick the cabinet wheel: the car keeps its
