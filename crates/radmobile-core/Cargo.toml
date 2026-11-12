@@ -8,9 +8,9 @@ license.workspace = true
 [dependencies]
 crc32fast = "1.5.5"
 memmap2 = { version = "0.9.12", default-features = false }
+rea-launcher.workspace = true
 thiserror = "2.0.21"
 zip = { version = "9.5.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-rea-launcher = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.7.2" }
 tempfile = "3.27.0"

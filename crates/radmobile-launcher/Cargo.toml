@@ -10,10 +10,11 @@ anyhow = "1.0.104"
 eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
 png = "0.18.1"
 radmobile-core = { version = "0.5.0", path = "../radmobile-core" }
+rea-launcher.workspace = true
+rea-launcher-native.workspace = true
 sdl2 = "0.38.0"
 
 [dev-dependencies]
-rea-launcher = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.7.2" }
 tempfile = "3.27.0"
 
 [target."cfg(unix)".dependencies]

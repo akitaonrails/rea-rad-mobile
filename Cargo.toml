@@ -7,6 +7,17 @@ version = "0.5.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/akitaonrails/rea-rad-mobile"
+
+[workspace.dependencies]
+# The shared launcher SDK, pinned to a release tag. To move to a new release,
+# change the tag on every line, re-run `scripts/sdk-sync` from that SDK
+# checkout (it vendors sdk/) and follow the release's Migration notes
+# (rea-launcher-sdk docs/playbooks/sdk-change.md).
+rea-launcher = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0" }
+# Native launchers only: MAME tied to the launcher (`child`), SDL wheels,
+# pads and force feedback (`sdl`).
+rea-launcher-native = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0", default-features = false, features = ["child", "sdl"] }
 
 [profile.release]
 opt-level = "s"
