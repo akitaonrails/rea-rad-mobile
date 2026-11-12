@@ -15,6 +15,9 @@ repository = "https://github.com/akitaonrails/rea-rad-mobile"
 # checkout (it vendors sdk/) and follow the release's Migration notes
 # (rea-launcher-sdk docs/playbooks/sdk-change.md).
 rea-launcher = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0" }
+# Windows: the console for --help/--list-devices/--check-roms, the
+# single-instance mutex and the player's dialogs.
+rea-launcher-win32 = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0" }
 # Native launchers only: MAME tied to the launcher (`child`), SDL wheels,
 # pads and force feedback (`sdl`).
 rea-launcher-native = { git = "https://github.com/akitaonrails/rea-launcher-sdk", tag = "v0.8.0", default-features = false, features = ["child", "sdl"] }

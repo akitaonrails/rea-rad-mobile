@@ -47,3 +47,40 @@ fn a_bad_command_line_prints_why_and_the_usage_and_exits_2() {
         snapshot!("help.txt", text(&out.stdout));
     }
 }
+
+/// One launcher at a time (SDK study §5.9: a second one started a second
+/// MAME and truncated the running game's bridge.shm). The lock is taken
+/// here, in a private runtime folder, as a running launcher would hold it.
+#[cfg(unix)]
+#[test]
+fn a_second_launcher_is_refused_with_exit_5_and_touches_nothing() {
+    let runtime = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let lock = runtime.path().join("rea-launcher-rea-rad-mobile.lock");
+    let run_check = || {
+        Command::new(env!("CARGO_BIN_EXE_radmobile-launcher"))
+            .args(["--check-roms", "--data"])
+            .arg(data.path())
+            .env("XDG_RUNTIME_DIR", runtime.path())
+            .output()
+            .unwrap()
+    };
+    let held = rea_launcher::instance::single_at(&lock).unwrap();
+    assert!(held.is_held());
+    let out = run_check();
+    assert_eq!(out.status.code(), Some(5));
+    assert_eq!(
+        text(&out.stderr),
+        "Rad Mobile: the launcher is already running (quit it, and its game, first)\n"
+    );
+    assert_eq!(text(&out.stdout), "");
+    assert!(
+        std::fs::read_dir(data.path()).unwrap().next().is_none(),
+        "no log, no settings: the running launcher's files are left alone"
+    );
+    // once the first one is gone, the next one runs
+    drop(held);
+    let out = run_check();
+    assert_eq!(out.status.code(), Some(1), "no ROMs here");
+    assert!(text(&out.stdout).starts_with("ROM NOT FOUND"));
+}
