@@ -1908,6 +1908,7 @@ dependencies = [
  "png",
  "radmobile-core",
  "rea-launcher",
+ "rea-launcher-native",
  "sdl2",
  "tempfile",
  "windows-sys 0.61.2",
@@ -1921,10 +1922,21 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "rea-launcher"
-version = "0.7.2"
-source = "git+https://github.com/akitaonrails/rea-launcher-sdk?tag=v0.7.2#a7892ff84a356b96e29affe0907c49e3842c8f45"
+version = "0.8.0"
+source = "git+https://github.com/akitaonrails/rea-launcher-sdk?tag=v0.8.0#87a9965790f47177e5070c6ee748bb3c0ab882c6"
 dependencies = [
  "sha2",
+]
+
+[[package]]
+name = "rea-launcher-native"
+version = "0.8.0"
+source = "git+https://github.com/akitaonrails/rea-launcher-sdk?tag=v0.8.0#87a9965790f47177e5070c6ee748bb3c0ab882c6"
+dependencies = [
+ "libc",
+ "rea-launcher",
+ "sdl2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
