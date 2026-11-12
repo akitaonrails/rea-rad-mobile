@@ -214,7 +214,7 @@ pub fn launch(p: &Prepared) -> io::Result<Child> {
         .stdin(Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log);
-    crate::child::spawn(&mut cmd)
+    rea_launcher_native::child::spawn_tied(&mut cmd)
 }
 
 #[cfg(test)]

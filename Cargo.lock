@@ -1904,7 +1904,6 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "eframe",
- "libc",
  "png",
  "radmobile-core",
  "rea-launcher",
@@ -1912,7 +1911,6 @@ dependencies = [
  "rea-launcher-win32",
  "sdl2",
  "tempfile",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
