@@ -1,0 +1,40 @@
+=== 1920x1080
+<?xml version="1.0"?>
+<!-- written by the Rad Mobile launcher -->
+<mamelayout version="2">
+  <element name="bezel"><image file="bezel.png" /></element>
+  <view name="Cabinet">
+    <screen index="0"><bounds x="369" y="54" width="1182" height="886" /></screen>
+    <element ref="bezel"><bounds x="0" y="0" width="1920" height="1080" /></element>
+  </view>
+</mamelayout>
+=== 1728x1080
+<?xml version="1.0"?>
+<!-- written by the Rad Mobile launcher -->
+<mamelayout version="2">
+  <element name="bezel"><image file="bezel.png" /></element>
+  <view name="Cabinet">
+    <screen index="0"><bounds x="273" y="54" width="1182" height="886" /></screen>
+    <element ref="bezel"><bounds x="0" y="0" width="1728" height="1080" /></element>
+  </view>
+</mamelayout>
+=== 2520x1080
+<?xml version="1.0"?>
+<!-- written by the Rad Mobile launcher -->
+<mamelayout version="2">
+  <element name="bezel"><image file="bezel.png" /></element>
+  <view name="Cabinet">
+    <screen index="0"><bounds x="669" y="54" width="1182" height="886" /></screen>
+    <element ref="bezel"><bounds x="0" y="0" width="2520" height="1080" /></element>
+  </view>
+</mamelayout>
+=== 1440x1080
+<?xml version="1.0"?>
+<!-- written by the Rad Mobile launcher -->
+<mamelayout version="2">
+  <element name="bezel"><image file="bezel.png" /></element>
+  <view name="Cabinet">
+    <screen index="0"><bounds x="129" y="54" width="1182" height="886" /></screen>
+    <element ref="bezel"><bounds x="0" y="0" width="1440" height="1080" /></element>
+  </view>
+</mamelayout>

@@ -1,0 +1,28 @@
+-- written by the Rad Mobile launcher: the menu backdrop
+local frame, wanted = 0, { [400] = true, [380] = true, [420] = true, [440] = true }
+emu.register_frame_done(function()
+  frame = frame + 1
+  if wanted[frame] then manager.machine.video:snapshot() end
+  if frame >= 441 then manager.machine:exit() end
+end)
+--- args
+radm
+-rompath
+/data/roms
+-cfg_directory
+/data/menu/capture/cfg
+-nvram_directory
+/data/menu/capture/nvram
+-snapshot_directory
+/data/menu/capture/snap
+-script
+/data/menu/capture/backdrop.lua
+-video
+none
+-sound
+none
+-nothrottle
+-noreadconfig
+-skip_gameinfo
+-snapname
+%i

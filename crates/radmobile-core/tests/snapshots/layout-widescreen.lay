@@ -1,0 +1,24 @@
+=== 16:9 margin 52
+<?xml version="1.0"?>
+<!-- written by the Rad Mobile launcher -->
+<mamelayout version="2">
+  <view name="Widescreen">
+    <screen index="0"><bounds x="0" y="0" width="1.7667" height="1" /></screen>
+  </view>
+</mamelayout>
+=== 16:10 margin 32
+<?xml version="1.0"?>
+<!-- written by the Rad Mobile launcher -->
+<mamelayout version="2">
+  <view name="Widescreen">
+    <screen index="0"><bounds x="0" y="0" width="1.6000" height="1" /></screen>
+  </view>
+</mamelayout>
+=== 21:9 margin 96
+<?xml version="1.0"?>
+<!-- written by the Rad Mobile launcher -->
+<mamelayout version="2">
+  <view name="Widescreen">
+    <screen index="0"><bounds x="0" y="0" width="2.1333" height="1" /></screen>
+  </view>
+</mamelayout>
