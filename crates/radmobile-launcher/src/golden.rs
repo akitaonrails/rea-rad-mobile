@@ -73,33 +73,41 @@ fn an_old_utf8_settings_file_loads_every_value() {
         old_settings("D:\\Jogos\\Ação\\roms".as_bytes()),
     )
     .unwrap();
-    let (settings, profile) = crate::ui::load(&app(dir.path()));
-    assert_eq!(settings, expected_old_settings("D:\\Jogos\\Ação\\roms"));
-    assert_eq!(profile, None);
+    let loaded = crate::store::load(&app(dir.path()));
+    assert_eq!(
+        loaded.settings,
+        expected_old_settings("D:\\Jogos\\Ação\\roms")
+    );
+    assert_eq!(loaded.profile, None);
+    assert!(loaded.unreadable.is_empty());
 }
 
-/// Pinned as it is today, and it is a bug (SDK study §5.8): a file saved
-/// as Latin-1 (Notepad "ANSI") is not UTF-8, the read fails, and every
-/// setting falls back to its default. Step 4 (`cfg::read_file`) fixes this
-/// on purpose; update the expectation then.
+/// SDK study §5.8, fixed in step 4 on purpose: a file saved as Latin-1
+/// (Notepad "ANSI") is not UTF-8. 0.5.0 failed the read and fell back to
+/// every default (and the next save overwrote the player's file);
+/// `cfg::read_file` decodes it as Latin-1 instead.
 #[test]
-fn an_old_latin1_settings_file_loads_as_the_defaults() {
+fn an_old_latin1_settings_file_loads_every_value() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("settings.ini"),
         old_settings(b"D:\\Jogos\\A\xe7\xe3o\\roms"),
     )
     .unwrap();
-    let (settings, _) = crate::ui::load(&app(dir.path()));
-    assert_eq!(settings, Settings::default());
+    let loaded = crate::store::load(&app(dir.path()));
+    assert_eq!(
+        loaded.settings,
+        expected_old_settings("D:\\Jogos\\Ação\\roms")
+    );
+    assert!(loaded.unreadable.is_empty());
 }
 
 #[test]
 fn no_files_load_as_the_defaults() {
     let dir = tempfile::tempdir().unwrap();
     assert_eq!(
-        crate::ui::load(&app(dir.path())),
-        (Settings::default(), None)
+        crate::store::load(&app(dir.path())),
+        crate::store::Loaded::default()
     );
 }
 
@@ -114,8 +122,9 @@ fn an_old_wheel_ini_loads() {
          brake_peak=32767\r\nBTN_LIGHT=wheel:4\r\nbtn_coin=aux:1\r\nbtn_start=pedal:3\r\n",
     )
     .unwrap();
-    let (_, profile) = crate::ui::load(&app(dir.path()));
-    let p: WheelProfile = profile.expect("a profile");
+    let p: WheelProfile = crate::store::load(&app(dir.path()))
+        .profile
+        .expect("a profile");
     assert_eq!(p.wheel.name, "FANATEC CSL DD");
     assert_eq!((p.wheel.vid, p.wheel.pid), (0x0eb7, 0x0020));
     assert_eq!(p.wheel.guid, "");
