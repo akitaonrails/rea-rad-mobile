@@ -128,6 +128,15 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+The launcher is built on
+[rea-launcher-sdk](https://github.com/akitaonrails/rea-launcher-sdk), the
+shared code of the rea launchers: settings files, the log, wheels, pads,
+force feedback and SDL devices come from there. A fix to that shared
+code belongs in the SDK's repository (its issues and pull requests), and
+reaches this launcher when it moves to the new SDK tag. AGENTS.md also
+shows the Windows checks (clippy for the Windows target, the tests under
+Wine) that CI runs.
+
 No wheel? `scripts/dev/fake-wheel.py` makes a virtual force-feedback
 wheel on Linux (`/dev/uinput`) and logs every force the launcher sends;
 `scripts/dev/fake-pad.py` makes a virtual gamepad. Changes to MAME
