@@ -9,8 +9,8 @@ use std::process::{Child, Command, Stdio};
 
 use radmobile_core::bridge::Bridge;
 use radmobile_core::rom::{self, Inventory, RomSet};
-use radmobile_core::settings::{Aspect, Settings};
-use radmobile_core::{controls, eeprom, mame};
+use radmobile_core::settings::{Aspect, Display, Settings};
+use radmobile_core::{art, controls, eeprom, mame};
 
 use crate::paths::AppPaths;
 
@@ -89,11 +89,9 @@ fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     fs::rename(&tmp, path)
 }
 
-pub fn prepare(
-    app: &AppPaths,
-    settings: &Settings,
-    screen: Option<mame::Screen>,
-) -> anyhow::Result<Prepared> {
+/// The romset ready for MAME: found, and rebuilt under MAME 0.289's names
+/// in the data folder unless it already is.
+pub fn ready_set(app: &AppPaths, settings: &Settings) -> anyhow::Result<(RomSet, mame::Paths)> {
     let (inv, status) = scan(app, settings);
     let RomStatus::Ready(set) = status else {
         anyhow::bail!(status.summary())
@@ -123,30 +121,34 @@ pub fn prepare(
         ));
         rom::build_set(&inv, set, &paths.roms)?;
     }
+    Ok((set, paths))
+}
 
-    // operator settings in the EEPROM (Upright cabinet, free play, …)
-    let eeprom_path = paths.eeprom(set.name);
-    let existing = fs::read(&eeprom_path).ok();
+/// Operator settings (Upright cabinet, free play, …) in the EEPROM file.
+pub fn write_eeprom(path: &Path, settings: &Settings) -> io::Result<()> {
+    let existing = fs::read(path).ok();
     write_atomic(
-        &eeprom_path,
+        path,
         &eeprom::write_settings(existing.as_deref(), settings.game),
-    )?;
+    )
+}
+
+pub fn prepare(
+    app: &AppPaths,
+    settings: &Settings,
+    screen: Option<mame::Screen>,
+) -> anyhow::Result<Prepared> {
+    let (set, paths) = ready_set(app, settings)?;
+    let exe = paths.exe.clone();
+
+    write_eeprom(&paths.eeprom(set.name), settings)?;
 
     write_atomic(
         &paths.ctrlr().join("rea.cfg"),
         controls::ctrlr_cfg().as_bytes(),
     )?;
 
-    let layout = paths.artwork().join(set.name).join("default.lay");
-    if settings.aspect == Aspect::TrueWidescreen {
-        let (w, h) = settings.wide_target.ratio();
-        write_atomic(
-            &layout,
-            mame::widescreen_layout(mame::wide_margin(w, h)).as_bytes(),
-        )?;
-    } else if layout.exists() {
-        fs::remove_file(&layout)?;
-    }
+    write_layout(&paths.artwork().join(set.name), settings, screen)?;
     fs::create_dir_all(paths.snaps())?;
 
     let bridge = Bridge::create(&paths.bridge)?;
@@ -158,6 +160,47 @@ pub fn prepare(
         bridge,
         log: app.data.join("mame.log"),
     })
+}
+
+/// The bezel's height in pixels; MAME scales it to the screen.
+const BEZEL_HEIGHT: u32 = 1080;
+
+/// The artwork for the picture shape: the widescreen view, the cabinet
+/// bezel around the 4:3 picture, or none (MAME's own 4:3 view).
+fn write_layout(
+    dir: &Path,
+    settings: &Settings,
+    screen: Option<mame::Screen>,
+) -> anyhow::Result<()> {
+    let layout = dir.join("default.lay");
+    let bezel = dir.join(mame::BEZEL_FILE);
+    if settings.aspect == Aspect::TrueWidescreen {
+        let (w, h) = settings.wide_target.ratio();
+        write_atomic(
+            &layout,
+            mame::widescreen_layout(mame::wide_margin(w, h)).as_bytes(),
+        )?;
+    } else if mame::shows_bezel(settings) {
+        // the bezel takes the screen's shape (the window's, when windowed)
+        let (rw, rh) = match screen {
+            Some(s) if settings.display == Display::Fullscreen => (s.width, s.height.max(1)),
+            _ => settings.wide_target.ratio(),
+        };
+        let width = (BEZEL_HEIGHT * rw / rh).max(BEZEL_HEIGHT * 4 / 3);
+        let (image, rect) = art::bezel(width, BEZEL_HEIGHT);
+        crate::art_io::save_png(&bezel, &image)?;
+        write_atomic(
+            &layout,
+            mame::cabinet_layout(width, BEZEL_HEIGHT, rect).as_bytes(),
+        )?;
+        return Ok(());
+    } else if layout.exists() {
+        fs::remove_file(&layout)?;
+    }
+    if bezel.exists() {
+        fs::remove_file(&bezel)?;
+    }
+    Ok(())
 }
 
 /// Start MAME with its output in `mame.log`.
@@ -197,6 +240,31 @@ mod tests {
             .err()
             .unwrap();
         assert!(err.to_string().starts_with("ROM NOT FOUND"));
+    }
+
+    #[test]
+    fn the_layout_follows_the_picture_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let art = dir.path().join("artwork/radm");
+        let mut s = Settings {
+            bezel: true,
+            ..Settings::default()
+        };
+        write_layout(&art, &s, None).unwrap();
+        let lay = fs::read_to_string(art.join("default.lay")).unwrap();
+        assert!(lay.contains(mame::CABINET_VIEW));
+        assert!(art.join(mame::BEZEL_FILE).is_file());
+
+        s.aspect = Aspect::TrueWidescreen;
+        write_layout(&art, &s, None).unwrap();
+        let lay = fs::read_to_string(art.join("default.lay")).unwrap();
+        assert!(lay.contains("Widescreen"));
+        assert!(!art.join(mame::BEZEL_FILE).exists());
+
+        s.aspect = Aspect::Original;
+        s.bezel = false;
+        write_layout(&art, &s, None).unwrap();
+        assert!(!art.join("default.lay").exists());
     }
 
     #[test]

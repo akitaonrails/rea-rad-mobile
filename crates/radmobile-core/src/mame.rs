@@ -33,6 +33,26 @@ pub fn widescreen_layout(margin: u32) -> String {
     )
 }
 
+/// The view name of [`cabinet_layout`].
+pub const CABINET_VIEW: &str = "Cabinet";
+/// The bezel picture [`cabinet_layout`] shows, next to the layout.
+pub const BEZEL_FILE: &str = "bezel.png";
+
+/// MAME artwork showing the 4:3 picture inside the cabinet bezel: the
+/// picture at `screen`, the bezel (`width` × `height`, with a transparent
+/// hole) drawn over it.
+pub fn cabinet_layout(width: u32, height: u32, screen: crate::art::ScreenRect) -> String {
+    format!(
+        "<?xml version=\"1.0\"?>\n<!-- written by the Rad Mobile launcher -->\n<mamelayout version=\"2\">\n  <element name=\"bezel\"><image file=\"{BEZEL_FILE}\" /></element>\n  <view name=\"{CABINET_VIEW}\">\n    <screen index=\"0\"><bounds x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" /></screen>\n    <element ref=\"bezel\"><bounds x=\"0\" y=\"0\" width=\"{width}\" height=\"{height}\" /></element>\n  </view>\n</mamelayout>\n",
+        screen.x, screen.y, screen.width, screen.height
+    )
+}
+
+/// Whether the 4:3 picture is shown in the cabinet bezel.
+pub fn shows_bezel(s: &Settings) -> bool {
+    s.aspect == Aspect::Original && s.bezel
+}
+
 /// Where everything MAME needs lives.
 #[derive(Debug, Clone)]
 pub struct Paths {
@@ -109,7 +129,10 @@ pub fn args(s: &Settings, set: &str, paths: &Paths, screen: Option<Screen>) -> V
     opt("joystick_deadzone", "0".into());
     opt("joystick_saturation", "1".into());
     opt("video", "bgfx".into());
-    opt("bgfx_screen_chains", s.filter.bgfx_chain().into());
+    opt(
+        "bgfx_screen_chains",
+        s.filter.bgfx_chain(s.crt_curvature).into(),
+    );
     opt(
         "brightness",
         format!("{:.2}", f32::from(s.brightness) / 100.0),
@@ -128,8 +151,8 @@ pub fn args(s: &Settings, set: &str, paths: &Paths, screen: Option<Screen>) -> V
         Display::Window => {
             let h = height.unwrap_or(960);
             let w = match s.aspect {
-                Aspect::Original => h * 4 / 3,
-                Aspect::Stretch | Aspect::TrueWidescreen => {
+                Aspect::Original if !s.bezel => h * 4 / 3,
+                Aspect::Original | Aspect::Stretch | Aspect::TrueWidescreen => {
                     let (rw, rh) = s.wide_target.ratio();
                     h * rw / rh
                 }
@@ -139,6 +162,8 @@ pub fn args(s: &Settings, set: &str, paths: &Paths, screen: Option<Screen>) -> V
     }
     if s.aspect == Aspect::TrueWidescreen {
         opt("view", "Widescreen".into());
+    } else if shows_bezel(s) {
+        opt("view", CABINET_VIEW.into());
     }
 
     let flags: &[&str] = &[
@@ -187,6 +212,64 @@ pub fn env(s: &Settings, paths: &Paths) -> Vec<(String, String)> {
         // no MAME warning box waiting for a key before the game
         ("REA_SKIP_STARTUP_SCREENS".into(), "1".into()),
     ]
+}
+
+/// Frames after power-on at which the intro shows the sunset skyline; the
+/// menu backdrop is the first of these snapshots that is a real scene.
+pub const BACKDROP_FRAMES: [u32; 4] = [400, 380, 420, 440];
+
+/// A Lua script for `-script`: a snapshot at each of [`BACKDROP_FRAMES`]
+/// (named after the frame), then quit.
+pub fn backdrop_script() -> String {
+    let wanted: Vec<String> = BACKDROP_FRAMES
+        .iter()
+        .map(|f| format!("[{f}] = true"))
+        .collect();
+    let last = BACKDROP_FRAMES.iter().max().copied().unwrap_or(0) + 1;
+    [
+        "-- written by the Rad Mobile launcher: the menu backdrop".to_string(),
+        format!("local frame, wanted = 0, {{ {} }}", wanted.join(", ")),
+        "emu.register_frame_done(function()".into(),
+        "  frame = frame + 1".into(),
+        "  if wanted[frame] then manager.machine.video:snapshot() end".into(),
+        format!("  if frame >= {last} then manager.machine:exit() end"),
+        "end)".into(),
+        String::new(),
+    ]
+    .join("\n")
+}
+
+/// A silent, invisible, unthrottled run of `set` that takes the backdrop
+/// snapshots into `scratch/snap/` as `0000.png`, `0001.png`… in the order
+/// taken (cfg and nvram in `scratch` too,
+/// so the player's own files are never touched).
+pub fn backdrop_args(set: &str, roms: &Path, scratch: &Path, script: &Path) -> Vec<String> {
+    let mut a: Vec<String> = vec![set.into()];
+    for (k, v) in [
+        ("rompath", roms.to_path_buf()),
+        ("cfg_directory", scratch.join("cfg")),
+        ("nvram_directory", scratch.join("nvram")),
+        ("snapshot_directory", scratch.join("snap")),
+        ("script", script.to_path_buf()),
+    ] {
+        a.push(format!("-{k}"));
+        a.push(path(&v));
+    }
+    a.extend(
+        [
+            "-video",
+            "none",
+            "-sound",
+            "none",
+            "-nothrottle",
+            "-noreadconfig",
+            "-skip_gameinfo",
+            "-snapname",
+            "%i",
+        ]
+        .map(String::from),
+    );
+    a
 }
 
 /// MAME's `-volume` is attenuation in dB (−32 … 0).
@@ -303,6 +386,72 @@ mod tests {
         for f in ["-window", "-nokeepaspect", "-nowaitvsync"] {
             assert!(a.contains(&f.to_string()), "{f}");
         }
+    }
+
+    #[test]
+    fn the_cabinet_bezel_shows_only_with_the_4_3_picture() {
+        let s = Settings {
+            display: Display::Window,
+            resolution: Resolution::P1080,
+            bezel: true,
+            filter: crate::settings::Filter::ArcadeCrt,
+            ..Settings::default()
+        };
+        let a = args(&s, "radm", &paths(), None);
+        assert_eq!(value(&a, "-view"), Some(CABINET_VIEW));
+        // the window takes the screen's shape: the bezel fills the sides
+        assert_eq!(value(&a, "-resolution"), Some("1920x1080"));
+        assert_eq!(value(&a, "-bgfx_screen_chains"), Some("rea-crt-arcade"));
+
+        let flat = Settings {
+            crt_curvature: false,
+            ..s.clone()
+        };
+        assert_eq!(
+            value(&args(&flat, "radm", &paths(), None), "-bgfx_screen_chains"),
+            Some("rea-crt-arcade-flat")
+        );
+        let wide = Settings {
+            aspect: Aspect::TrueWidescreen,
+            ..s
+        };
+        assert!(!shows_bezel(&wide));
+        assert_eq!(
+            value(&args(&wide, "radm", &paths(), None), "-view"),
+            Some("Widescreen")
+        );
+    }
+
+    #[test]
+    fn the_cabinet_layout_puts_the_bezel_over_the_screen() {
+        let (_, screen) = crate::art::bezel(320, 180);
+        let lay = cabinet_layout(320, 180, screen);
+        let screen_at = lay.find("<screen").unwrap();
+        let bezel_at = lay.find("<element ref=\"bezel\">").unwrap();
+        assert!(screen_at < bezel_at, "drawn later is on top");
+        assert!(lay.contains(&format!("<image file=\"{BEZEL_FILE}\" />")));
+        assert!(lay.contains(&format!("<view name=\"{CABINET_VIEW}\">")));
+    }
+
+    #[test]
+    fn the_backdrop_run_is_silent_invisible_and_private() {
+        let scratch = PathBuf::from("/d/menu/capture");
+        let a = backdrop_args(
+            "radm",
+            Path::new("/d/roms"),
+            &scratch,
+            &scratch.join("b.lua"),
+        );
+        assert_eq!(a[0], "radm");
+        assert_eq!(value(&a, "-video"), Some("none"));
+        assert_eq!(value(&a, "-sound"), Some("none"));
+        assert_eq!(value(&a, "-nvram_directory"), Some("/d/menu/capture/nvram"));
+        assert!(a.contains(&"-nothrottle".to_string()));
+        let script = backdrop_script();
+        for f in BACKDROP_FRAMES {
+            assert!(script.contains(&format!("[{f}] = true")), "{script}");
+        }
+        assert!(script.contains("manager.machine:exit()"));
     }
 
     #[test]

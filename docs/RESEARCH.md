@@ -116,6 +116,36 @@ Ridge Racer 1/2: our MAME patch reads the car's state from work RAM and
 publishes it as outputs; the launcher turns it into spring, damper,
 constant force and rumble. RAM map: [RAM_MAP.md](RAM_MAP.md).
 
+## CRT filters (Wanszai's Scud Race)
+
+Wanszai's Scud Race 0.0.17 (PC) embeds the HLSL source of its CRT, whose
+header calls it "in-house HLSL from Timothy Lottes' public-domain CRT
+math", ported from his Sega Rally X360 work. Its menu has two switches:
+CRT FILTER ("scanlines, phosphor mask and glow") and CURVATURE ("CRT
+screen curve and vignette"). Three passes:
+
+1. Bloom source at quarter resolution: `k = saturate((max(r,g,b) − 0.40) / 0.60)`, `c × k`.
+2. Separable 9-tap Gaussian blur, H then V (weights 0.227027, 0.194595,
+   0.121622, 0.054054, 0.016216).
+3. Composite: optional barrel warp (`uv += uv × (|uv.yx| / (3,4))² × curvature`,
+   black outside), a Gaussian beam per virtual scanline whose width runs
+   from beam_min to beam_max with luma (`col × mix(1 − scan, 1, beam)`),
+   a 3-pixel RGB phosphor mask in output pixels (aperture grille, or a
+   shadow mask with alternate rows shifted 1.5 px), glow added, vignette
+   `1 − |vd|² × vignette`, brightness.
+
+The presets are a table in the code (`k_crt_presets`, six floats each;
+read from the binary, not guessed):
+
+| Preset | Scanlines | Beam | Mask | Mask strength | Glow |
+|---|---|---|---|---|---|
+| TRINITRON | 0.35 | 0.90–1.60 | aperture grille | 0.30 | 0.20 |
+| ARCADE | 0.50 | 0.80–1.40 | shadow mask | 0.45 | 0.35 |
+
+CURVATURE on is curvature 0.12 and vignette 0.25; Scud Race uses 384
+virtual lines (Rad Mobile has 224). Our ARCADE CRT and TRINITRON CRT are
+our own bgfx shaders of the same maths with these numbers (`bgfx/`).
+
 ## Decisions
 
 | Item | Decision |
@@ -123,4 +153,5 @@ constant force and rumble. RAM map: [RAM_MAP.md](RAM_MAP.md).
 | Emulator | MAME 0.289, only `segas32.cpp` (`SUBTARGET=radmobile`), patched, bundled |
 | Wheel path | Launcher reads devices through SDL2 and writes cabinet values into a shared-memory bridge; MAME reads it as one joystick (`-joystickprovider reabridge`) |
 | FFB path | MAME outputs (`-output reabridge`) → launcher → SDL haptic (DirectInput on Windows, evdev on Linux) |
+| Menu backdrop and bezel | Made on the player's machine: the backdrop is a snapshot of their own ROM taken by an unseen MAME run (`art::backdrop`), the bezel is our own drawing (`art::bezel`); nothing from the game is shipped |
 | rea-launcher-sdk | Not a dependency (it targets PC games run under Wine); its coding and testing rules are followed |

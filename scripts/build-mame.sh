@@ -69,6 +69,8 @@ esac
 rm -rf "$out/bgfx"
 mkdir -p "$out/bgfx"
 cp -r "$mame/bgfx/chains" "$mame/bgfx/effects" "$mame/bgfx/shaders" "$out/bgfx/"
+# merged with ours (the rea-crt chains; shader sources in bgfx/src stay out)
+cp -r "$root/bgfx/chains" "$root/bgfx/effects" "$root/bgfx/shaders" "$out/bgfx/"
 # textures the CRT chains load through the artwork path
 rm -rf "$out/artwork"
 mkdir -p "$out/artwork"

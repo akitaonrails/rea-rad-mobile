@@ -1,0 +1,32 @@
+{
+	"blend": {
+		"equation": "add",
+		"srcColor": "1",
+		"dstColor": "0",
+		"srcAlpha": "1",
+		"dstAlpha": "0"
+	},
+	"depth": {
+		"function": "always",
+		"writeenable": false
+	},
+	"cull": {
+		"mode": "none"
+	},
+	"write": {
+		"rgb": true,
+		"alpha": true
+	},
+	"vertex": "chains/rea-crt/vs_rea-crt",
+	"fragment": "chains/rea-crt/fs_rea-crt_composite",
+	"uniforms": [
+		{ "name": "s_screen",        "type": "int",  "values": [ 0 ] },
+		{ "name": "s_glow",          "type": "int",  "values": [ 1 ] },
+		{ "name": "u_tex_size0",     "type": "vec4", "values": [ 320.0, 224.0, 0.0, 0.0 ] },
+		{ "name": "u_target_dims",   "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] },
+		{ "name": "u_scan",          "type": "vec4", "values": [ 0.50, 0.80, 1.40, 0.0 ] },
+		{ "name": "u_mask",          "type": "vec4", "values": [ 0.45, 1.0, 0.35, 1.0 ] },
+		{ "name": "u_geom",          "type": "vec4", "values": [ 0.12, 0.25, 0.0, 0.0 ] },
+		{ "name": "u_inv_view_dims", "type": "vec4", "values": [ 1.0, 1.0, 0.0, 0.0 ] }
+	]
+}

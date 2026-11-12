@@ -40,7 +40,7 @@ windows)
 *) die "unknown target '$target' (linux or windows)" ;;
 esac
 
-for f in "$mame_bin" "$launcher" "$mame_dir/bgfx" "$mame_dir/artwork/bgfx"; do
+for f in "$mame_bin" "$launcher" "$mame_dir/bgfx" "$mame_dir/bgfx/chains/rea-crt-arcade.json" "$mame_dir/artwork/bgfx"; do
 	[ -e "$f" ] || die "missing $f - build it first"
 done
 

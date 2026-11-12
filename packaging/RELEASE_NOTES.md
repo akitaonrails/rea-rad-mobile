@@ -1,5 +1,21 @@
 Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 
+## Changes in 0.4.0
+
+- New **ARCADE CRT** and **TRINITRON CRT** filters, after the CRT of
+  Wanszai's Scud Race port: scanlines whose width follows brightness, a
+  shadow mask or aperture grille, and glow, with Wanszai's own settings.
+  **CRT CURVATURE** curves the glass and darkens the corners.
+- New **CABINET BEZEL** (4:3): the picture framed like an arcade monitor,
+  with cabinet art filling the sides.
+- The menu takes the Rad Mobile title screen's colours, and its
+  background is the intro's sunset skyline, captured once from your own
+  ROM (nothing from the game ships with the launcher).
+
+The new CRT filters were checked on Linux (OpenGL). Their Windows
+(Direct3D 11) shaders are built with the same compiler as MAME's own, but
+have not been run on a Windows PC yet; please report if they misbehave.
+
 ## Changes in 0.3.0
 
 - Gamepads and wheels now turn on the lights and the wiper. MAME's Rad

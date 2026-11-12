@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use eframe::egui::{
     self, Align2, Color32, CornerRadius, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2,
 };
+use radmobile_core::art::{self, palette};
 use radmobile_core::controls::{Action, Button};
 use radmobile_core::ini::Ini;
 use radmobile_core::pad_map::{Capture, PadCapture, PadMap};
@@ -19,17 +20,25 @@ use crate::input::{Active, Command, InputService, Kind, Nav, Snapshot};
 use crate::paths::AppPaths;
 use crate::session::{self, RomStatus};
 
-// Sunset palette, after the Rad Mobile title screen.
-const SKY_TOP: Color32 = Color32::from_rgb(0x14, 0x0b, 0x2e);
-const SKY_MID: Color32 = Color32::from_rgb(0x5a, 0x17, 0x5c);
-const HORIZON: Color32 = Color32::from_rgb(0xf2, 0x7a, 0x2a);
-const GROUND: Color32 = Color32::from_rgb(0x0b, 0x07, 0x16);
-const GRID: Color32 = Color32::from_rgb(0xff, 0x4f, 0xa3);
-const GOLD: Color32 = Color32::from_rgb(0xff, 0xc8, 0x3d);
-const PANEL: Color32 = Color32::from_rgba_premultiplied(8, 6, 20, 215);
-const TEXT: Color32 = Color32::from_rgb(0xf4, 0xee, 0xff);
-const DIM: Color32 = Color32::from_rgb(0xa8, 0x9c, 0xc8);
-const SELECT: Color32 = Color32::from_rgb(0xff, 0x6a, 0x1a);
+// The Rad Mobile title screen: a purple dusk sky, crimson clouds, the gold
+// of "MOBILE" and the chrome of "RAD" (radmobile_core::art::palette).
+const fn rgb(c: [u8; 3]) -> Color32 {
+    Color32::from_rgb(c[0], c[1], c[2])
+}
+const SKY_TOP: Color32 = rgb(palette::NIGHT);
+const SKY_MID: Color32 = rgb(palette::PURPLE);
+const HORIZON: Color32 = rgb(palette::CRIMSON);
+const GROUND: Color32 = Color32::from_rgb(0x0a, 0x06, 0x14);
+const GRID: Color32 = Color32::from_rgb(0x9a, 0x4a, 0xc8);
+const GOLD: Color32 = rgb(palette::GOLD);
+const CHROME: Color32 = rgb(palette::CHROME);
+const PANEL: Color32 = Color32::from_rgba_premultiplied(10, 6, 22, 220);
+const TEXT: Color32 = Color32::from_rgb(0xf4, 0xf0, 0xff);
+const DIM: Color32 = Color32::from_rgb(0xb0, 0xa4, 0xcc);
+/// The selected row: gold like "MOBILE", with dark text on it.
+const SELECT: Color32 = rgb(palette::GOLD);
+const ON_SELECT: Color32 = rgb(palette::NIGHT);
+const ACCENT: Color32 = rgb(palette::CRIMSON);
 const OK: Color32 = Color32::from_rgb(0x6c, 0xf0, 0x9a);
 const BAD: Color32 = Color32::from_rgb(0xff, 0x5a, 0x6a);
 
@@ -89,7 +98,9 @@ enum Item {
     Resolution,
     Aspect,
     WideTarget,
+    Bezel,
     Filter,
+    CrtCurvature,
     Vsync,
     Brightness,
     Volume,
@@ -142,10 +153,16 @@ fn items(screen: Screen, s: &Settings) -> Vec<Item> {
         ],
         Screen::Video => {
             let mut v = vec![Display, Resolution, Aspect];
-            if s.aspect != cfg::Aspect::Original {
+            if s.aspect == cfg::Aspect::Original {
+                v.push(Bezel);
+            } else {
                 v.push(WideTarget);
             }
-            v.extend([Filter, Vsync, Brightness, Back]);
+            v.push(Filter);
+            if s.filter.has_curvature_switch() {
+                v.push(CrtCurvature);
+            }
+            v.extend([Vsync, Brightness, Back]);
             v
         }
         Screen::Sound => vec![Volume, AttractSound, Back],
@@ -220,6 +237,8 @@ fn label(item: Item) -> &'static str {
         Resolution => "RESOLUTION",
         Aspect => "ASPECT RATIO",
         WideTarget => "SCREEN SHAPE",
+        Bezel => "CABINET BEZEL",
+        CrtCurvature => "CRT CURVATURE",
         Filter => "FILTER",
         Vsync => "VSYNC",
         Brightness => "BRIGHTNESS",
@@ -271,7 +290,11 @@ fn help(item: Item) -> &'static str {
             "4:3 as in the arcade, stretched, or true widescreen: more road on the sides (experimental)."
         }
         WideTarget => "The shape of your screen, for stretch and true widescreen.",
-        Filter => "Sharp pixels, smooth, or a CRT shader with scanlines and curvature.",
+        Filter => {
+            "Sharp, smooth, or a CRT. Arcade and Trinitron CRT follow Wanszai's ports: scanlines, phosphor mask and glow."
+        }
+        Bezel => "Frame the 4:3 picture in an arcade cabinet's monitor surround.",
+        CrtCurvature => "The curved glass and darker corners of a CRT tube.",
         Vsync => "Sync to the display to avoid tearing.",
         Brightness => "Picture brightness.",
         Volume => "Game volume.",
@@ -360,13 +383,14 @@ fn screen_by_name(name: &str) -> Screen {
 }
 
 fn save_png(path: &std::path::Path, image: &egui::ColorImage) -> anyhow::Result<()> {
-    let file = std::io::BufWriter::new(std::fs::File::create(path)?);
-    let mut enc = png::Encoder::new(file, image.size[0] as u32, image.size[1] as u32);
-    enc.set_color(png::ColorType::Rgba);
-    enc.set_depth(png::BitDepth::Eight);
-    let mut w = enc.write_header()?;
-    w.write_image_data(image.as_raw())?;
-    Ok(())
+    crate::art_io::save_png(
+        path,
+        &art::Image {
+            width: image.size[0] as u32,
+            height: image.size[1] as u32,
+            rgba: image.as_raw().to_vec(),
+        },
+    )
 }
 
 struct WizardRun {
@@ -409,6 +433,12 @@ pub struct App {
     child: Option<Child>,
     wizard: Option<WizardRun>,
     remap: Option<Remap>,
+    /// The treated snapshot behind the menu, once there is one.
+    backdrop: Option<egui::TextureHandle>,
+    /// Taking the snapshot (MAME, unseen) in the background.
+    backdrop_job: Option<std::thread::JoinHandle<anyhow::Result<std::path::PathBuf>>>,
+    /// The last capture failed; try again only after a ROM rescan.
+    backdrop_failed: bool,
     /// Menu input is ignored until then (see [`REMAP_QUIET`]).
     quiet_until: Option<Instant>,
     /// What the remap row shows while waiting.
@@ -444,6 +474,9 @@ impl App {
             child: None,
             wizard: None,
             remap: None,
+            backdrop: None,
+            backdrop_job: None,
+            backdrop_failed: false,
             quiet_until: None,
             remap_status: None,
             rom_dir_text,
@@ -535,9 +568,58 @@ impl App {
         }
     }
 
+    /// Show the backdrop when it exists; otherwise take it once the ROM is
+    /// found (not while a game runs, and not in screenshot mode).
+    fn tick_backdrop(&mut self, ctx: &egui::Context) {
+        if self.backdrop.is_some() {
+            return;
+        }
+        if let Some(job) = self.backdrop_job.take_if(|j| j.is_finished()) {
+            match job.join() {
+                Ok(Ok(path)) => crate::log::line(&format!("menu: backdrop {}", path.display())),
+                Ok(Err(e)) => {
+                    crate::log::line(&format!("menu: no backdrop ({e:#})"));
+                    self.backdrop_failed = true;
+                }
+                Err(_) => self.backdrop_failed = true,
+            }
+        }
+        let file = crate::backdrop::path(&self.paths);
+        if file.is_file() {
+            match crate::art_io::load_png(&file) {
+                Ok(img) => {
+                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                        [img.width as usize, img.height as usize],
+                        &img.rgba,
+                    );
+                    self.backdrop =
+                        Some(ctx.load_texture("backdrop", image, egui::TextureOptions::NEAREST));
+                }
+                Err(e) => {
+                    crate::log::line(&format!("menu: backdrop unreadable ({e:#})"));
+                    let _ = std::fs::remove_file(&file);
+                }
+            }
+            return;
+        }
+        let ready = matches!(self.rom, RomStatus::Ready(_));
+        if ready
+            && self.backdrop_job.is_none()
+            && !self.backdrop_failed
+            && self.child.is_none()
+            && self.screenshot.is_none()
+        {
+            let (paths, settings) = (self.paths.clone(), self.settings.clone());
+            self.backdrop_job = Some(std::thread::spawn(move || {
+                crate::backdrop::capture(&paths, &settings)
+            }));
+        }
+    }
+
     fn rescan_roms(&mut self) {
         let (_, rom) = session::scan(&self.paths, &self.settings);
         self.rom = rom;
+        self.backdrop_failed = false;
         let color = if matches!(self.rom, RomStatus::Ready(_)) {
             OK
         } else {
@@ -547,6 +629,11 @@ impl App {
     }
 
     fn start_game(&mut self, ctx: &egui::Context) {
+        // the backdrop capture may be rebuilding the romset: let it finish
+        // (a few seconds, once); its picture is picked up from the file
+        if let Some(job) = self.backdrop_job.take() {
+            let _ = job.join();
+        }
         let monitor = ctx.input(|i| i.viewport().monitor_size).map(|s| {
             let ppp = ctx.pixels_per_point() / ctx.zoom_factor();
             radmobile_core::mame::Screen {
@@ -825,6 +912,8 @@ impl App {
             Aspect => s.aspect = cycle(&cfg::Aspect::ALL, s.aspect, dd),
             WideTarget => s.wide_target = cycle(&cfg::WideTarget::ALL, s.wide_target, dd),
             Filter => s.filter = cycle(&cfg::Filter::ALL, s.filter, dd),
+            Bezel => s.bezel = !s.bezel,
+            CrtCurvature => s.crt_curvature = !s.crt_curvature,
             Vsync => s.vsync = !s.vsync,
             Brightness => s.brightness = step_u8(s.brightness, dd, 5, 50, 150),
             Volume => s.volume = step_u8(s.volume, dd, 5, 0, 100),
@@ -930,6 +1019,8 @@ impl App {
             Aspect => s.aspect.label().to_uppercase(),
             WideTarget => s.wide_target.label().into(),
             Filter => s.filter.label().to_uppercase(),
+            Bezel => on_off(s.bezel),
+            CrtCurvature => on_off(s.crt_curvature),
             Vsync => on_off(s.vsync),
             Brightness => format!("{}%", s.brightness),
             Volume => format!("{}%", s.volume),
@@ -1065,14 +1156,39 @@ impl eframe::App for App {
 
         let rect = ui.max_rect();
         let painter = ui.painter().clone();
-        draw_background(&painter, rect, ctx.input(|i| i.time));
+        self.tick_backdrop(&ctx);
+        draw_background(
+            &painter,
+            rect,
+            ctx.input(|i| i.time),
+            self.backdrop.as_ref(),
+        );
         self.draw(ui, rect);
 
         ctx.request_repaint_after(Duration::from_millis(16));
     }
 }
 
-fn draw_background(p: &egui::Painter, r: Rect, time: f64) {
+/// The menu backdrop, cover-fit and centred; its pixels keep the game's
+/// pixel aspect. Falls back to a drawn sunset while there is none.
+fn draw_background(p: &egui::Painter, r: Rect, time: f64, backdrop: Option<&egui::TextureHandle>) {
+    if let Some(tex) = backdrop {
+        let aspect = art::GAME_WIDTH as f32 * radmobile_core::mame::PIXEL_ASPECT as f32
+            / art::BACKDROP_ROWS as f32;
+        let size = if r.width() / r.height() > aspect {
+            Vec2::new(r.width(), r.width() / aspect)
+        } else {
+            Vec2::new(r.height() * aspect, r.height())
+        };
+        let shown = Rect::from_center_size(r.center(), size);
+        let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+        p.image(tex.id(), shown, uv, Color32::WHITE);
+        return;
+    }
+    draw_sunset(p, r, time);
+}
+
+fn draw_sunset(p: &egui::Painter, r: Rect, time: f64) {
     let horizon = r.top() + r.height() * 0.58;
     // sky: vertical gradient in bands
     let bands = 48;
@@ -1097,7 +1213,7 @@ fn draw_background(p: &egui::Painter, r: Rect, time: f64) {
         p.rect_filled(
             Rect::from_min_max(Pos2::new(sun.x - half, y), Pos2::new(sun.x + half, y + h)),
             0.0,
-            lerp(GOLD, SELECT, i as f32 / 14.0),
+            lerp(GOLD, rgb(palette::ORANGE), i as f32 / 14.0),
         );
     }
     // ground with a moving perspective grid
@@ -1191,11 +1307,20 @@ impl App {
             [header.left_bottom(), header.right_bottom()],
             Stroke::new(unit * 0.4, GOLD),
         );
-        text(
+        // the logo's colours: chrome "RAD", gold "MOBILE"
+        let rad = text(
             &p,
             Pos2::new(r.left() + unit * 4.0, header.center().y),
             Align2::LEFT_CENTER,
-            "RAD MOBILE",
+            "RAD ",
+            unit * 7.5,
+            CHROME,
+        );
+        text(
+            &p,
+            Pos2::new(rad.right(), header.center().y),
+            Align2::LEFT_CENTER,
+            "MOBILE",
             unit * 7.5,
             GOLD,
         );
@@ -1383,33 +1508,36 @@ impl App {
             }
             let selected = i == self.selected;
             if selected {
-                p.rect_filled(row, CornerRadius::same(4), SELECT.gamma_multiply(0.85));
+                p.rect_filled(row, CornerRadius::same(4), SELECT);
                 p.rect_filled(
                     Rect::from_min_size(row.min, Vec2::new(unit * 0.8, row.height())),
                     0.0,
-                    GOLD,
+                    ACCENT,
                 );
             }
-            let color = if selected { Color32::WHITE } else { TEXT };
-            text(
-                &p,
+            // dark on the gold row (no shadow), light elsewhere
+            let write = |pos: Pos2, align: Align2, s: &str, color: Color32| {
+                if selected {
+                    p.text(pos, align, s, FontId::proportional(size), ON_SELECT);
+                } else {
+                    text(&p, pos, align, s, size, color);
+                }
+            };
+            write(
                 Pos2::new(row.left() + unit * 2.5, row.center().y),
                 Align2::LEFT_CENTER,
                 label(*item),
-                size,
-                color,
+                TEXT,
             );
             if let Some(v) = self.value(*item) {
                 // a mapping row is not changed with left and right
                 let arrows = selected && !matches!(item, Item::Map(_));
                 let v = if arrows { format!("<  {v}  >") } else { v };
-                text(
-                    &p,
+                write(
                     Pos2::new(row.right() - unit * 2.0, row.center().y),
                     Align2::RIGHT_CENTER,
                     &v,
-                    size,
-                    if selected { Color32::WHITE } else { GOLD },
+                    GOLD,
                 );
             }
             if *item == Item::RomFolder {

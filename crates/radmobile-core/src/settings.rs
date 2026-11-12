@@ -115,15 +115,39 @@ pub enum Filter {
     Crt,
     /// CRT with a glass bezel and glow.
     CrtDeluxe,
+    /// Wanszai's "ARCADE" CRT (Scud Race PC): shadow mask, strong scanlines
+    /// and glow (`bgfx/` in this repository).
+    ArcadeCrt,
+    /// Wanszai's "TRINITRON" CRT: aperture grille, softer lines.
+    TrinitronCrt,
 }
 
 impl Filter {
-    pub const ALL: [Filter; 4] = [
+    pub const ALL: [Filter; 6] = [
         Filter::Sharp,
         Filter::Smooth,
+        Filter::ArcadeCrt,
+        Filter::TrinitronCrt,
         Filter::Crt,
         Filter::CrtDeluxe,
     ];
+
+    /// The name in settings files.
+    fn key(self) -> &'static str {
+        match self {
+            Filter::Sharp => "sharp",
+            Filter::Smooth => "smooth",
+            Filter::Crt => "crt",
+            Filter::CrtDeluxe => "crt_deluxe",
+            Filter::ArcadeCrt => "arcade_crt",
+            Filter::TrinitronCrt => "trinitron_crt",
+        }
+    }
+
+    /// Whether the CRT CURVATURE switch applies (the Wanszai-style CRTs).
+    pub fn has_curvature_switch(self) -> bool {
+        matches!(self, Filter::ArcadeCrt | Filter::TrinitronCrt)
+    }
 
     pub fn label(self) -> &'static str {
         match self {
@@ -131,15 +155,23 @@ impl Filter {
             Filter::Smooth => "Smooth",
             Filter::Crt => "CRT",
             Filter::CrtDeluxe => "CRT Deluxe",
+            Filter::ArcadeCrt => "Arcade CRT",
+            Filter::TrinitronCrt => "Trinitron CRT",
         }
     }
 
-    pub fn bgfx_chain(self) -> &'static str {
-        match self {
-            Filter::Sharp => "unfiltered",
-            Filter::Smooth => "default",
-            Filter::Crt => "crt-geom",
-            Filter::CrtDeluxe => "crt-geom-deluxe",
+    /// MAME's `-bgfx_screen_chains`; `curved` picks the curved screen of the
+    /// filters that have [`Filter::has_curvature_switch`].
+    pub fn bgfx_chain(self, curved: bool) -> &'static str {
+        match (self, curved) {
+            (Filter::Sharp, _) => "unfiltered",
+            (Filter::Smooth, _) => "default",
+            (Filter::Crt, _) => "crt-geom",
+            (Filter::CrtDeluxe, _) => "crt-geom-deluxe",
+            (Filter::ArcadeCrt, true) => "rea-crt-arcade",
+            (Filter::ArcadeCrt, false) => "rea-crt-arcade-flat",
+            (Filter::TrinitronCrt, true) => "rea-crt-trinitron",
+            (Filter::TrinitronCrt, false) => "rea-crt-trinitron-flat",
         }
     }
 }
@@ -263,6 +295,10 @@ pub struct Settings {
     pub aspect: Aspect,
     pub wide_target: WideTarget,
     pub filter: Filter,
+    /// The curved screen of the Wanszai-style CRT filters.
+    pub crt_curvature: bool,
+    /// The cabinet frame around the 4:3 picture.
+    pub bezel: bool,
     pub vsync: bool,
     /// 50..=150 %.
     pub brightness: u8,
@@ -288,6 +324,8 @@ impl Default for Settings {
             aspect: Aspect::Original,
             wide_target: WideTarget::W16x9,
             filter: Filter::Smooth,
+            crt_curvature: true,
+            bezel: false,
             vsync: true,
             brightness: 100,
             volume: 100,
@@ -352,12 +390,16 @@ impl Settings {
                 &["16:9", "16:10", "21:9"],
                 d.wide_target,
             ),
-            filter: pick(
-                &Filter::ALL,
-                ini.get("filter"),
-                &["sharp", "smooth", "crt", "crt_deluxe"],
-                d.filter,
-            ),
+            filter: ini
+                .get("filter")
+                .and_then(|k| {
+                    Filter::ALL
+                        .into_iter()
+                        .find(|f| f.key().eq_ignore_ascii_case(k))
+                })
+                .unwrap_or(d.filter),
+            crt_curvature: flag("crt_curvature", d.crt_curvature),
+            bezel: flag("bezel", d.bezel),
             vsync: flag("vsync", d.vsync),
             brightness: num("brightness", d.brightness.into(), 50, 150) as u8,
             volume: num("volume", d.volume.into(), 0, 100) as u8,
@@ -436,11 +478,9 @@ impl Settings {
                 [Aspect::ALL.iter().position(|a| *a == self.aspect).unwrap()],
         );
         ini.set("wide_target", self.wide_target.label());
-        ini.set(
-            "filter",
-            ["sharp", "smooth", "crt", "crt_deluxe"]
-                [Filter::ALL.iter().position(|f| *f == self.filter).unwrap()],
-        );
+        ini.set("filter", self.filter.key());
+        ini.set("crt_curvature", b(self.crt_curvature));
+        ini.set("bezel", b(self.bezel));
         ini.set("vsync", b(self.vsync));
         ini.set("brightness", &self.brightness.to_string());
         ini.set("volume", &self.volume.to_string());
@@ -512,7 +552,9 @@ mod tests {
             resolution: Resolution::P2160,
             aspect: Aspect::TrueWidescreen,
             wide_target: WideTarget::W21x9,
-            filter: Filter::CrtDeluxe,
+            filter: Filter::ArcadeCrt,
+            crt_curvature: false,
+            bezel: true,
             vsync: false,
             brightness: 120,
             volume: 35,

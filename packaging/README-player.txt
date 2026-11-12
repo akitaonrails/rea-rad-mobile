@@ -60,7 +60,16 @@ RESOLUTION     Desktop, 1080p, 1440p or 4K.
 ASPECT RATIO   4:3 Original, Stretch, or True widescreen: the game draws
                more of the world on both sides (experimental: objects
                can appear at the very edge of the screen).
-FILTER         Sharp, Smooth, CRT, CRT Deluxe.
+CABINET BEZEL  4:3 only: the picture inside an arcade monitor's frame,
+               with cabinet art filling the rest of the screen.
+FILTER         Sharp, Smooth, Arcade CRT, Trinitron CRT, CRT, CRT
+               Deluxe. Arcade and Trinitron follow Wanszai's ports
+               (scanlines, phosphor mask, glow); CRT CURVATURE bends
+               their glass.
+
+The menu's background is a snapshot of your own ROM's intro, taken the
+first time the ROM is found (data/menu/backdrop.png; delete it to take
+it again).
 
 
 GAME SETTINGS
