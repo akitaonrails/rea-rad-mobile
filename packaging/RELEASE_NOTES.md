@@ -11,6 +11,23 @@ Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
   is refreshed every 50 ms instead of every 4 ms.
 - With two gamepads connected (a Steam Deck's own controls and an
   external pad), the steering assist no longer fights itself.
+- `settings.ini` saved in Notepad as "ANSI" with an accented ROM folder
+  name no longer resets every setting; a settings file that can't be
+  read is left alone and the menu says so, instead of being overwritten.
+- The launcher now edits `settings.ini` and `wheel.ini` in place, so
+  your own comments and notes stay. Lines are written as `key = value`
+  and switches as `on`/`off` (older versions read this too).
+- Settings, wheel setup and pictures are saved safely: a crash or a full
+  disk mid-save no longer leaves half a file.
+- On Windows, `RadMobile --list-devices`, `--check-roms` and `--help` now
+  print in the Command Prompt or PowerShell window they were typed in.
+- Starting the launcher twice no longer starts a second game: on Windows
+  the open menu comes to the front; otherwise the second one says the
+  launcher is already running.
+- The wheel setup no longer waits forever on a pedal that never comes
+  back up: it moves on after 10 seconds.
+- `RadMobile.exe` now carries its name, version and publisher (Windows'
+  file properties).
 
 ## Changes in 0.5.0
 
