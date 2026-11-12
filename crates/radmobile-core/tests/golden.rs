@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 use radmobile_core::controls::{self, Action, Button};
 use radmobile_core::eeprom::{self, GameSettings};
 use radmobile_core::ffb::FfbSettings;
-use radmobile_core::ini::Ini;
 use radmobile_core::mame::{self, Paths, Screen};
 use radmobile_core::pad_map::{PadInput, PadMap};
 use radmobile_core::settings::{
@@ -92,10 +91,7 @@ fn every_field_changed() -> Settings {
 
 #[test]
 fn settings_ini_from_the_defaults() {
-    snapshot!(
-        "settings-default.ini",
-        Settings::default().to_ini().to_string()
-    );
+    snapshot!("settings-default.ini", Settings::default().to_cfg(""));
 }
 
 #[test]
@@ -104,9 +100,9 @@ fn settings_ini_from_each_preset() {
         let mut s = Settings::default();
         preset.apply(&mut s);
         let name = format!("settings-preset-{}.ini", preset.label().to_lowercase());
-        snapshot!(&name, s.to_ini().to_string());
+        snapshot!(&name, s.to_cfg(""));
         // what was written reads back as the same preset
-        let back = Settings::from_ini(&Ini::parse(&s.to_ini().to_string()));
+        let back = Settings::from_cfg(&s.to_cfg(""));
         assert_eq!(Preset::of(&back), Some(preset));
     }
 }
@@ -114,9 +110,9 @@ fn settings_ini_from_each_preset() {
 #[test]
 fn settings_ini_with_every_field_changed() {
     let s = every_field_changed();
-    let text = s.to_ini().to_string();
+    let text = s.to_cfg("");
     snapshot!("settings-every-field.ini", text);
-    assert_eq!(Settings::from_ini(&Ini::parse(&text)), s);
+    assert_eq!(Settings::from_cfg(&text), s);
 }
 
 /// A file as an older launcher, or a player in Notepad, may leave it:
@@ -212,34 +208,48 @@ fn old_format_expected() -> Settings {
 
 #[test]
 fn an_old_format_settings_file_reads_every_value() {
-    let ini = Ini::parse(OLD_FORMAT);
-    assert_eq!(ini.bad_lines, 1, "the junk line");
-    assert_eq!(Settings::from_ini(&ini), old_format_expected());
+    assert_eq!(Settings::from_cfg(OLD_FORMAT), old_format_expected());
 }
 
-/// Pinned as it is today, quirks included: the SDK's `cfg` reader strips
-/// a byte-order mark, so step 4 changes this on purpose.
+/// Saving over a 0.5.0 file: the launcher's lines become `key = value`
+/// with `on`/`off` (step 4 of the SDK move, on purpose), in place; the
+/// player's comments, the `[section]`, the junk line and CRLF stay, and a
+/// key in another case (`Resolution=`) is written in lower case where it
+/// was. The keys the old file lacked (the pad map) are added at the end.
 #[test]
-fn a_byte_order_mark_sticks_to_the_first_key() {
-    let ini = Ini::parse("\u{feff}display=window\r\nbezel=1\r\n");
-    let s = Settings::from_ini(&ini);
-    assert_eq!(s.display, Display::Fullscreen, "the BOM hides `display`");
+fn saving_over_an_old_format_file() {
+    let text = old_format_expected().to_cfg(OLD_FORMAT);
+    snapshot!("settings-saved-over-old-format.ini", text);
+    // (snapshots compare with LF line ends)
+    assert_eq!(text.matches("\r\n").count(), text.lines().count());
+    assert_eq!(Settings::from_cfg(&text), old_format_expected());
+    // saving again changes nothing
+    assert_eq!(old_format_expected().to_cfg(&text), text);
+}
+
+/// 0.5.0 read a byte-order mark as part of the first key, so a Notepad
+/// "UTF-8 with BOM" file lost its first setting. `cfg` looks past the
+/// mark (on purpose since step 4), and keeps it when saving.
+#[test]
+fn a_byte_order_mark_is_looked_past_and_kept() {
+    let s = Settings::from_cfg("\u{feff}display=window\r\nbezel=1\r\n");
+    assert_eq!(s.display, Display::Window);
     assert!(s.bezel);
-    assert_eq!(ini.get("\u{feff}display"), Some("window"));
+    assert!(
+        s.to_cfg("\u{feff}display=window\r\n")
+            .starts_with("\u{feff}display = window\r\n")
+    );
 
-    // a BOM before the usual header comment is harmless (one bad line)
-    let ini = Ini::parse(&format!("\u{feff}{OLD_FORMAT}"));
-    assert_eq!(ini.bad_lines, 2);
-    assert_eq!(Settings::from_ini(&ini), old_format_expected());
+    let with_bom = format!("\u{feff}{OLD_FORMAT}");
+    assert_eq!(Settings::from_cfg(&with_bom), old_format_expected());
 }
 
-/// The region is the one value matched case-sensitively today.
+/// 0.5.0 matched the region case-sensitively (`RADMU` read as `radm`);
+/// since step 4 it takes any case, like every other value.
 #[test]
-fn the_region_is_case_sensitive() {
-    assert_eq!(
-        Settings::from_ini(&Ini::parse("region=RADMU")).region,
-        "radm"
-    );
+fn the_region_is_read_in_any_case() {
+    assert_eq!(Settings::from_cfg("region=RADMU").region, "radmu");
+    assert_eq!(Settings::from_cfg("region=Radm").region, "radm");
 }
 
 // ------------------------------------------------------------- MAME command
@@ -443,9 +453,10 @@ fn at_rest() -> DeviceState {
 }
 
 fn wheel_ini(p: &WheelProfile) -> String {
-    let text = p.to_ini().to_string();
-    // what was written reads back the same
-    assert_eq!(WheelProfile::from_ini(&Ini::parse(&text)).as_ref(), Some(p));
+    let text = p.to_cfg("");
+    // what was written reads back the same, and saving again changes nothing
+    assert_eq!(WheelProfile::from_cfg(&text).as_ref(), Some(p));
+    assert_eq!(p.to_cfg(&text), text);
     text
 }
 

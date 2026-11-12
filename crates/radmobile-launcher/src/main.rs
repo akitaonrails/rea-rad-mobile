@@ -12,6 +12,7 @@ mod input;
 mod log;
 mod paths;
 mod session;
+mod store;
 mod ui;
 
 use std::path::PathBuf;
@@ -113,7 +114,14 @@ fn main() {
         paths.mame_dir.display(),
         paths.data.display()
     ));
-    let (settings, profile) = ui::load(&paths);
+    let loaded = store::load(&paths);
+    for (path, e) in &loaded.unreadable {
+        log::line(&format!(
+            "could not read {}: {e} (using the defaults; the file is left as it is)",
+            path.display()
+        ));
+    }
+    let (settings, profile) = (loaded.settings.clone(), loaded.profile.clone());
 
     let code = if cli.check_roms {
         let (inv, status) = session::scan(&paths, &settings);
@@ -141,7 +149,7 @@ fn main() {
     } else if cli.play {
         play(&paths, settings, profile, &cli.mame_args)
     } else {
-        menu(paths, settings, profile, cli.windowed, cli.screenshot)
+        menu(paths, loaded, cli.windowed, cli.screenshot)
     };
     std::process::exit(code);
 }
@@ -225,12 +233,12 @@ fn play(
 
 fn menu(
     paths: AppPaths,
-    settings: radmobile_core::settings::Settings,
-    profile: Option<radmobile_core::wheel::WheelProfile>,
+    loaded: store::Loaded,
     windowed: bool,
     screenshot: Option<ui::Screenshot>,
 ) -> i32 {
-    let fullscreen = !windowed && screenshot.is_none() && settings.display == Display::Fullscreen;
+    let fullscreen =
+        !windowed && screenshot.is_none() && loaded.settings.display == Display::Fullscreen;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Rad Mobile")
@@ -243,7 +251,7 @@ fn menu(
     let result = eframe::run_native(
         "Rad Mobile",
         options,
-        Box::new(move |_cc| Ok(Box::new(ui::App::new(paths, settings, profile, screenshot)))),
+        Box::new(move |_cc| Ok(Box::new(ui::App::new(paths, loaded, screenshot)))),
     );
     match result {
         Ok(()) => 0,

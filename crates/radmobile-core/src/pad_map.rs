@@ -7,7 +7,9 @@
 //! whatever is bound.
 
 use crate::controls::{Action, Button};
-use crate::ini::Ini;
+use rea_launcher::cfg;
+
+use crate::keys::Keys;
 use crate::wheel::PadState;
 
 /// A pad button or trigger, as SDL's controller layer names them.
@@ -189,8 +191,10 @@ impl PadMap {
         }
     }
 
-    /// `pad_<action>=rt,a` (or `none`) for every control.
-    pub fn write_ini(&self, ini: &mut Ini) {
+    /// The map written into a settings file's text: `pad_<action> = a,rt`
+    /// (or `none`) for every control; every other line stays.
+    pub fn to_cfg(&self, existing: &str) -> String {
+        let mut text = existing.to_owned();
         for action in Action::ALL {
             let keys: Vec<_> = self.inputs(action).map(PadInput::key).collect();
             let value = if keys.is_empty() {
@@ -198,15 +202,17 @@ impl PadMap {
             } else {
                 keys.join(",")
             };
-            ini.set(&format!("pad_{}", action.key()), &value);
+            text = cfg::set_key(&text, &format!("pad_{}", action.key()), &value);
         }
+        text
     }
 
     /// Missing controls keep their default; unknown names are skipped.
-    pub fn from_ini(ini: &Ini) -> Self {
+    pub fn from_cfg(text: &str) -> Self {
+        let keys = Keys::of(text);
         let mut map = PadMap::default();
         for action in Action::ALL {
-            if let Some(value) = ini.get(&format!("pad_{}", action.key())) {
+            if let Some(value) = keys.get(&format!("pad_{}", action.key())) {
                 let inputs: Vec<_> = value
                     .split(',')
                     .filter_map(|s| PadInput::parse(s.trim()))
@@ -309,21 +315,20 @@ mod tests {
     }
 
     #[test]
-    fn maps_round_trip_through_ini() {
+    fn maps_round_trip_through_cfg() {
         let mut map = PadMap::default();
         map.assign(Action::Press(Button::Pause), PadInput::RightStick);
         map.set(Action::Press(Button::Coin), &[]);
-        let mut ini = Ini::default();
-        map.write_ini(&mut ini);
-        assert_eq!(ini.get("pad_coin"), Some("none"));
-        assert_eq!(ini.get("pad_accel"), Some("a,rt"));
-        assert_eq!(PadMap::from_ini(&Ini::parse(&ini.to_string())), map);
+        let text = map.to_cfg("# settings.ini\ndifficulty = 3\n");
+        assert!(text.starts_with("# settings.ini\ndifficulty = 3\n"));
+        assert!(text.contains("\npad_coin = none\n"));
+        assert!(text.contains("\npad_accel = a,rt\n"));
+        assert_eq!(PadMap::from_cfg(&text), map);
     }
 
     #[test]
     fn missing_or_unknown_entries_keep_defaults() {
-        let ini = Ini::parse("pad_light=x,bogus\n");
-        let map = PadMap::from_ini(&ini);
+        let map = PadMap::from_cfg("PAD_LIGHT=x,bogus\n");
         assert_eq!(map.describe(Action::Press(Button::Light)), "X");
         assert_eq!(map.describe(Action::Accelerate), "A / RT");
     }

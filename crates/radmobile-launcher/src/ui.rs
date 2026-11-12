@@ -10,7 +10,6 @@ use eframe::egui::{
 };
 use radmobile_core::art::{self, palette};
 use radmobile_core::controls::{Action, Button};
-use radmobile_core::ini::Ini;
 use radmobile_core::pad_map::{Capture, PadCapture, PadMap};
 use radmobile_core::settings::{self as cfg, InputMode, Settings};
 use radmobile_core::wheel::wizard::{Status, Step, Wizard};
@@ -19,6 +18,7 @@ use radmobile_core::wheel::{self, DeviceId, WheelProfile};
 use crate::input::{Active, Command, InputService, Kind, Nav, Snapshot};
 use crate::paths::AppPaths;
 use crate::session::{self, RomStatus};
+use crate::store;
 
 // The Rad Mobile title screen: a purple dusk sky, crimson clouds, the gold
 // of "MOBILE" and the chrome of "RAD" (radmobile_core::art::palette).
@@ -479,18 +479,20 @@ pub struct App {
     /// What the remap row shows while waiting.
     remap_status: Option<String>,
     rom_dir_text: String,
+    /// Files that could not be read at start: never saved over this run.
+    unreadable: Vec<std::path::PathBuf>,
     message: Option<(String, Color32, Instant)>,
     snapshot: Snapshot,
     screenshot: Option<(Screenshot, u32)>,
 }
 
 impl App {
-    pub fn new(
-        paths: AppPaths,
-        settings: Settings,
-        profile: Option<WheelProfile>,
-        screenshot: Option<Screenshot>,
-    ) -> Self {
+    pub fn new(paths: AppPaths, loaded: store::Loaded, screenshot: Option<Screenshot>) -> Self {
+        let store::Loaded {
+            settings,
+            profile,
+            unreadable,
+        } = loaded;
         let input = InputService::start(settings.clone(), profile.clone());
         let (_, rom) = session::scan(&paths, &settings);
         crate::log::line(&rom.summary());
@@ -515,7 +517,17 @@ impl App {
             quiet_until: None,
             remap_status: None,
             rom_dir_text,
-            message: None,
+            message: unreadable.first().map(|(path, _)| {
+                (
+                    format!(
+                        "COULD NOT READ {} - CHANGES WILL NOT BE SAVED",
+                        file_name(path)
+                    ),
+                    BAD,
+                    Instant::now(),
+                )
+            }),
+            unreadable: unreadable.into_iter().map(|(path, _)| path).collect(),
             snapshot: Snapshot::default(),
             screen: screenshot
                 .as_ref()
@@ -552,10 +564,24 @@ impl App {
         self.message = Some((text.into(), color, Instant::now()));
     }
 
+    /// Why `path` can't be saved this run, if it can't.
+    fn unsaveable(&self, path: &std::path::Path) -> Option<String> {
+        self.unreadable
+            .iter()
+            .any(|p| p == path)
+            .then(|| format!("COULD NOT READ {} - NOT SAVED", file_name(path)))
+    }
+
     fn save(&mut self) {
-        let text = self.settings.to_ini().to_string();
-        if let Err(e) = crate::session::write_atomic(&self.paths.settings(), text.as_bytes()) {
-            self.say(format!("COULD NOT SAVE SETTINGS: {e}"), BAD);
+        let path = self.paths.settings();
+        let result = match self.unsaveable(&path) {
+            Some(why) => Err(why),
+            None => store::save_settings(&path, &self.settings)
+                .map_err(|e| format!("COULD NOT SAVE SETTINGS: {e}")),
+        };
+        if let Err(why) = result {
+            crate::log::line(&why);
+            self.say(why, BAD);
         }
         self.input.send(Command::Configure {
             settings: Box::new(self.settings.clone()),
@@ -564,21 +590,15 @@ impl App {
     }
 
     fn save_profile(&mut self) {
-        let result = match &self.profile {
-            Some(p) => crate::session::write_atomic(
-                &self.paths.wheel_profile(),
-                p.to_ini().to_string().as_bytes(),
-            ),
-            None => match std::fs::remove_file(self.paths.wheel_profile()) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                r => r,
-            },
+        let path = self.paths.wheel_profile();
+        let result = match self.unsaveable(&path) {
+            Some(why) => Err(why),
+            None => store::save_profile(&path, self.profile.as_ref())
+                .map_err(|e| format!("COULD NOT WRITE WHEEL.INI - SETTINGS UNCHANGED ({e})")),
         };
-        if let Err(e) = result {
-            self.say(
-                format!("COULD NOT WRITE WHEEL.INI - SETTINGS UNCHANGED ({e})"),
-                BAD,
-            );
+        if let Err(why) = result {
+            crate::log::line(&why);
+            self.say(why, BAD);
         }
         self.save();
     }
@@ -1836,15 +1856,12 @@ impl App {
     }
 }
 
-/// Load the saved settings and wheel profile (defaults when missing).
-pub fn load(paths: &AppPaths) -> (Settings, Option<WheelProfile>) {
-    let settings = std::fs::read_to_string(paths.settings())
-        .map(|t| Settings::from_ini(&Ini::parse(&t)))
-        .unwrap_or_default();
-    let profile = std::fs::read_to_string(paths.wheel_profile())
-        .ok()
-        .and_then(|t| WheelProfile::from_ini(&Ini::parse(&t)));
-    (settings, profile)
+/// `SETTINGS.INI` for a message.
+fn file_name(path: &std::path::Path) -> String {
+    path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_uppercase()
 }
 
 #[cfg(test)]

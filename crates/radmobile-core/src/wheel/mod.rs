@@ -5,7 +5,9 @@ pub mod known;
 pub mod wizard;
 
 use crate::controls::{Action, Button, Cabinet};
-use crate::ini::Ini;
+use rea_launcher::cfg;
+
+use crate::keys::{self, Keys};
 use crate::pad_map::PadMap;
 
 /// Raw axis full scale, as SDL reports it.
@@ -439,81 +441,111 @@ impl WheelProfile {
         cab
     }
 
-    pub fn to_ini(&self) -> Ini {
-        let mut ini = Ini::default();
-        ini.comment("wheel.ini - written by the Rad Mobile launcher's wheel setup");
-        ini.comment("hand edits stay until the setup runs again");
-        let put_id = |ini: &mut Ini, prefix: &str, id: &DeviceId| {
-            ini.set(&format!("{prefix}name"), &id.name);
-            ini.set(&format!("{prefix}vid"), &format!("{:04x}", id.vid));
-            ini.set(&format!("{prefix}pid"), &format!("{:04x}", id.pid));
-            ini.set(&format!("{prefix}guid"), &id.guid);
+    /// The profile written into `existing` (a `wheel.ini`'s text, or "" for
+    /// a new one, which gets [`WHEEL_INI_HEADER`]): `wheel_{name,vid,pid,guid}`,
+    /// `aux_…`, `steer_axis`, `rotation`, `{gas,brake}_{device,axis,rest,peak}`,
+    /// `btn_<key>` = `wheel:N` or `aux:N`. Every other line stays (hand edits
+    /// and comments); keys this profile no longer has are commented out.
+    /// The same text as `rea_launcher::wheel::WheelProfile::to_cfg`.
+    pub fn to_cfg(&self, existing: &str) -> String {
+        let mut text = keys::with_header(existing, WHEEL_INI_HEADER);
+        let mut set = |key: &str, value: Option<String>| {
+            text = match value {
+                Some(v) => cfg::set_key(&text, key, &v),
+                None => cfg::clear_key(&text, key),
+            };
         };
-        put_id(&mut ini, "wheel_", &self.wheel);
-        if let Some(aux) = &self.aux {
-            put_id(&mut ini, "aux_", aux);
+        for (prefix, id) in [("wheel_", Some(&self.wheel)), ("aux_", self.aux.as_ref())] {
+            set(&format!("{prefix}name"), id.map(|i| i.name.clone()));
+            set(
+                &format!("{prefix}vid"),
+                id.map(|i| format!("{:04x}", i.vid)),
+            );
+            set(
+                &format!("{prefix}pid"),
+                id.map(|i| format!("{:04x}", i.pid)),
+            );
+            set(&format!("{prefix}guid"), id.map(|i| i.guid.clone()));
         }
-        ini.set("steer_axis", &self.steer_axis.to_string());
-        ini.set("rotation", &self.rotation.to_string());
+        set("steer_axis", Some(self.steer_axis.to_string()));
+        set("rotation", Some(self.rotation.to_string()));
         for (key, pedal) in [("gas", &self.gas), ("brake", &self.brake)] {
-            if let Some((src, p)) = pedal {
-                let src = if *src == Source::Aux { "aux" } else { "wheel" };
-                ini.set(&format!("{key}_device"), src);
-                ini.set(&format!("{key}_axis"), &p.axis.to_string());
-                ini.set(&format!("{key}_rest"), &p.rest.to_string());
-                ini.set(&format!("{key}_peak"), &p.peak.to_string());
-            }
+            let device = |src: Source| if src == Source::Aux { "aux" } else { "wheel" };
+            set(
+                &format!("{key}_device"),
+                pedal.map(|(s, _)| device(s).to_owned()),
+            );
+            set(
+                &format!("{key}_axis"),
+                pedal.map(|(_, p)| p.axis.to_string()),
+            );
+            set(
+                &format!("{key}_rest"),
+                pedal.map(|(_, p)| p.rest.to_string()),
+            );
+            set(
+                &format!("{key}_peak"),
+                pedal.map(|(_, p)| p.peak.to_string()),
+            );
         }
-        for (button, bind) in &self.buttons {
-            ini.set(&format!("btn_{}", button.key()), &bind.format());
+        for button in Button::ALL {
+            set(
+                &format!("btn_{}", button.key()),
+                self.binding(button).map(Binding::format),
+            );
         }
-        ini
+        text
     }
 
-    pub fn from_ini(ini: &Ini) -> Option<Self> {
+    /// A profile from a `wheel.ini`'s text (this launcher's `key = value`
+    /// or 0.5.0's `key=value`; keys in any case); `None` without the
+    /// wheel's `wheel_vid` and `wheel_pid`. The rotation is clamped to
+    /// 90..=3600.
+    pub fn from_cfg(text: &str) -> Option<Self> {
+        let ini = Keys::of(text);
         let get_id = |prefix: &str| -> Option<DeviceId> {
+            let hex = |k: &str| u16::from_str_radix(ini.get(&format!("{prefix}{k}"))?, 16).ok();
+            let text = |k: &str| {
+                ini.get(&format!("{prefix}{k}"))
+                    .unwrap_or_default()
+                    .to_string()
+            };
             Some(DeviceId {
-                name: ini
-                    .get(&format!("{prefix}name"))
-                    .unwrap_or_default()
-                    .to_string(),
-                vid: u16::from_str_radix(ini.get(&format!("{prefix}vid"))?, 16).ok()?,
-                pid: u16::from_str_radix(ini.get(&format!("{prefix}pid"))?, 16).ok()?,
-                guid: ini
-                    .get(&format!("{prefix}guid"))
-                    .unwrap_or_default()
-                    .to_string(),
+                name: text("name"),
+                vid: hex("vid")?,
+                pid: hex("pid")?,
+                guid: text("guid"),
             })
         };
         let pedal = |key: &str| -> Option<(Source, PedalAxis)> {
-            let src = match ini.get(&format!("{key}_device")).unwrap_or("wheel") {
-                "aux" => Source::Aux,
+            let src = match ini.get(&format!("{key}_device")) {
+                Some("aux") => Source::Aux,
                 _ => Source::Wheel,
             };
             Some((
                 src,
                 PedalAxis {
-                    axis: ini.get_parsed(&format!("{key}_axis"))?,
-                    rest: ini.get_parsed(&format!("{key}_rest"))?,
-                    peak: ini.get_parsed(&format!("{key}_peak"))?,
+                    axis: ini.parsed(&format!("{key}_axis"))?,
+                    rest: ini.parsed(&format!("{key}_rest"))?,
+                    peak: ini.parsed(&format!("{key}_peak"))?,
                 },
             ))
         };
-        let mut buttons = Vec::new();
-        for button in Button::ALL {
-            if let Some(b) = ini
-                .get(&format!("btn_{}", button.key()))
-                .and_then(Binding::parse)
-            {
-                buttons.push((button, b));
-            }
-        }
+        let buttons = Button::ALL
+            .into_iter()
+            .filter_map(|b| {
+                let bind = ini
+                    .get(&format!("btn_{}", b.key()))
+                    .and_then(Binding::parse)?;
+                Some((b, bind))
+            })
+            .collect();
         Some(Self {
             wheel: get_id("wheel_")?,
             aux: get_id("aux_"),
-            steer_axis: ini.get_parsed("steer_axis").unwrap_or(0),
+            steer_axis: ini.parsed("steer_axis").unwrap_or(0),
             rotation: ini
-                .get_parsed("rotation")
+                .parsed("rotation")
                 .unwrap_or(known::GENERIC_ROTATION)
                 .clamp(90, 3600),
             gas: pedal("gas"),
@@ -522,6 +554,10 @@ impl WheelProfile {
         })
     }
 }
+
+/// The comment at the top of a new `wheel.ini`.
+pub const WHEEL_INI_HEADER: &str = "wheel.ini - written by the Rad Mobile launcher's wheel setup\n\
+                                    hand edits stay until the setup runs again";
 
 /// Whether `pedal` reads the same axis the same way as `other`. Two pedals
 /// on one axis in opposite directions are a combined pedal axis and fine.
@@ -915,7 +951,7 @@ mod tests {
     }
 
     #[test]
-    fn profiles_round_trip_through_ini() {
+    fn profiles_round_trip_through_cfg() {
         let mut profile = WheelProfile::guess(
             csl(),
             &DeviceState {
@@ -936,10 +972,18 @@ mod tests {
                 button: 3,
             },
         );
-        let text = profile.to_ini().to_string();
-        let back = WheelProfile::from_ini(&Ini::parse(&text)).unwrap();
+        let text = profile.to_cfg("");
+        let back = WheelProfile::from_cfg(&text).unwrap();
         assert_eq!(back, profile);
-        assert!(WheelProfile::from_ini(&Ini::parse("steer_axis=1")).is_none());
+        assert!(WheelProfile::from_cfg("steer_axis=1").is_none());
+        // a profile without aux pedals comments the old aux lines out, and
+        // a hand-written comment stays
+        let mut no_aux = profile.clone();
+        no_aux.forget_aux();
+        let edited = format!("{text}# my note\n");
+        let again = no_aux.to_cfg(&edited);
+        assert!(again.contains("\n#aux_vid =\n") && again.ends_with("# my note\n"));
+        assert_eq!(WheelProfile::from_cfg(&again).unwrap(), no_aux);
     }
 
     #[test]

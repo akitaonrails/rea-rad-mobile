@@ -4,9 +4,12 @@
 
 use std::path::PathBuf;
 
+use rea_launcher::cfg;
+
+use crate::controls::Action;
 use crate::eeprom::GameSettings;
 use crate::ffb::FfbSettings;
-use crate::ini::Ini;
+use crate::keys::{self, Keys, put};
 use crate::pad_map::PadMap;
 use crate::wheel::{PadSettings, SteeringLock, WheelSettings};
 
@@ -348,12 +351,14 @@ fn pick<T: Copy + PartialEq>(all: &[T], key: Option<&str>, names: &[&str], defau
 }
 
 impl Settings {
-    pub fn from_ini(ini: &Ini) -> Self {
+    /// The settings in a `settings.ini`'s text; anything missing or
+    /// unusable keeps its default, numbers are clamped to their range.
+    pub fn from_cfg(text: &str) -> Self {
+        let ini = Keys::of(text);
         let d = Settings::default();
-        let num = |k: &str, def: i64, lo: i64, hi: i64| {
-            ini.get_parsed::<i64>(k).unwrap_or(def).clamp(lo, hi)
-        };
-        let flag = |k: &str, def: bool| ini.get_bool(k).unwrap_or(def);
+        let num =
+            |k: &str, def: i64, lo: i64, hi: i64| ini.parsed::<i64>(k).unwrap_or(def).clamp(lo, hi);
+        let flag = |k: &str, def: bool| ini.flag(k).unwrap_or(def);
         let game = GameSettings {
             difficulty: num("difficulty", d.game.difficulty.into(), 1, 16) as u8,
             timer: num("timer", d.game.timer.into(), 40, 60) as u8,
@@ -404,7 +409,7 @@ impl Settings {
             brightness: num("brightness", d.brightness.into(), 50, 150) as u8,
             volume: num("volume", d.volume.into(), 0, 100) as u8,
             region: match ini.get("region") {
-                Some("radmu") => "radmu".into(),
+                Some(r) if r.eq_ignore_ascii_case("radmu") => "radmu".into(),
                 _ => "radm".into(),
             },
             game,
@@ -444,7 +449,7 @@ impl Settings {
                 trigger_linearity: num("trigger_linearity", d.pad.trigger_linearity.into(), 0, 100)
                     as u8,
                 steer_assist: flag("steer_assist", d.pad.steer_assist),
-                map: PadMap::from_ini(ini),
+                map: PadMap::from_cfg(text),
             },
             ffb: FfbSettings {
                 strength: num("ffb_strength", d.ffb.strength.into(), 0, 100) as u8,
@@ -458,11 +463,15 @@ impl Settings {
         }
     }
 
-    pub fn to_ini(&self) -> Ini {
-        let mut ini = Ini::default();
-        ini.comment("settings.ini - Rad Mobile launcher");
-        let b = |v: bool| if v { "1" } else { "0" };
-        ini.set(
+    /// The settings written into `existing` (a `settings.ini`'s text, or
+    /// "" for a new file): each setting's `key = value` line is replaced or
+    /// added, switches as `on`/`off`; the player's comments, order and other
+    /// lines stay.
+    pub fn to_cfg(&self, existing: &str) -> String {
+        let mut text = keys::with_header(existing, "settings.ini - Rad Mobile launcher");
+        let b = cfg::on_off;
+        put(
+            &mut text,
             "display",
             if self.display == Display::Window {
                 "window"
@@ -470,59 +479,99 @@ impl Settings {
                 "fullscreen"
             },
         );
-        ini.set(
+        put(
+            &mut text,
             "resolution",
             ["desktop", "1080p", "1440p", "2160p"][Resolution::ALL
                 .iter()
                 .position(|r| *r == self.resolution)
                 .unwrap()],
         );
-        ini.set(
+        put(
+            &mut text,
             "aspect",
             ["original", "stretch", "widescreen"]
                 [Aspect::ALL.iter().position(|a| *a == self.aspect).unwrap()],
         );
-        ini.set("wide_target", self.wide_target.label());
-        ini.set("filter", self.filter.key());
-        ini.set("crt_curvature", b(self.crt_curvature));
-        ini.set("bezel", b(self.bezel));
-        ini.set("vsync", b(self.vsync));
-        ini.set("brightness", &self.brightness.to_string());
-        ini.set("volume", &self.volume.to_string());
-        ini.set("region", &self.region);
-        ini.set("difficulty", &self.game.difficulty.to_string());
-        ini.set("timer", &self.game.timer.to_string());
-        ini.set("rival_speed", &self.game.rival_speed.to_string());
-        ini.set("police_speed", &self.game.police_speed.to_string());
-        ini.set(
+        put(&mut text, "wide_target", self.wide_target.label());
+        put(&mut text, "filter", self.filter.key());
+        put(&mut text, "crt_curvature", b(self.crt_curvature));
+        put(&mut text, "bezel", b(self.bezel));
+        put(&mut text, "vsync", b(self.vsync));
+        put(&mut text, "brightness", &self.brightness.to_string());
+        put(&mut text, "volume", &self.volume.to_string());
+        put(&mut text, "region", &self.region);
+        put(&mut text, "difficulty", &self.game.difficulty.to_string());
+        put(&mut text, "timer", &self.game.timer.to_string());
+        put(&mut text, "rival_speed", &self.game.rival_speed.to_string());
+        put(
+            &mut text,
+            "police_speed",
+            &self.game.police_speed.to_string(),
+        );
+        put(
+            &mut text,
             "race_time",
             RaceTime::NAMES[RaceTime::ALL
                 .iter()
                 .position(|r| *r == self.race_time)
                 .unwrap()],
         );
-        ini.set("attract_sound", b(self.game.attract_sound));
-        ini.set("free_play", b(self.game.free_play));
-        ini.set("credits_start", &self.game.credits_to_start.to_string());
-        ini.set(
+        put(&mut text, "attract_sound", b(self.game.attract_sound));
+        put(&mut text, "free_play", b(self.game.free_play));
+        put(
+            &mut text,
+            "credits_start",
+            &self.game.credits_to_start.to_string(),
+        );
+        put(
+            &mut text,
             "credits_continue",
             &self.game.credits_to_continue.to_string(),
         );
-        ini.set("input_device", &self.input.label().to_ascii_lowercase());
-        ini.set("steer_lock", &self.wheel.lock.to_setting().to_string());
-        ini.set("invert_accel", b(self.wheel.invert_accel));
-        ini.set("invert_brake", b(self.wheel.invert_brake));
-        ini.set("wheel_device", &self.wheel.device);
-        ini.set("stick_deadzone", &self.pad.stick_deadzone.to_string());
-        ini.set("stick_linearity", &self.pad.stick_linearity.to_string());
-        ini.set("trigger_deadzone", &self.pad.trigger_deadzone.to_string());
-        ini.set("trigger_linearity", &self.pad.trigger_linearity.to_string());
-        ini.set("steer_assist", b(self.pad.steer_assist));
-        self.pad.map.write_ini(&mut ini);
-        ini.set("ffb_strength", &self.ffb.strength.to_string());
-        ini.set("ffb_invert", b(self.ffb.invert));
-        ini.set("rumble_strength", &self.ffb.rumble.to_string());
-        ini.set(
+        put(
+            &mut text,
+            "input_device",
+            &self.input.label().to_ascii_lowercase(),
+        );
+        put(
+            &mut text,
+            "steer_lock",
+            &self.wheel.lock.to_setting().to_string(),
+        );
+        put(&mut text, "invert_accel", b(self.wheel.invert_accel));
+        put(&mut text, "invert_brake", b(self.wheel.invert_brake));
+        put(&mut text, "wheel_device", &self.wheel.device);
+        put(
+            &mut text,
+            "stick_deadzone",
+            &self.pad.stick_deadzone.to_string(),
+        );
+        put(
+            &mut text,
+            "stick_linearity",
+            &self.pad.stick_linearity.to_string(),
+        );
+        put(
+            &mut text,
+            "trigger_deadzone",
+            &self.pad.trigger_deadzone.to_string(),
+        );
+        put(
+            &mut text,
+            "trigger_linearity",
+            &self.pad.trigger_linearity.to_string(),
+        );
+        put(&mut text, "steer_assist", b(self.pad.steer_assist));
+        for action in Action::ALL {
+            text = keys::lower_key_case(&text, &format!("pad_{}", action.key()));
+        }
+        text = self.pad.map.to_cfg(&text);
+        put(&mut text, "ffb_strength", &self.ffb.strength.to_string());
+        put(&mut text, "ffb_invert", b(self.ffb.invert));
+        put(&mut text, "rumble_strength", &self.ffb.rumble.to_string());
+        put(
+            &mut text,
             "rom_dir",
             &self
                 .rom_dir
@@ -530,14 +579,13 @@ impl Settings {
                 .map(|p| p.display().to_string())
                 .unwrap_or_default(),
         );
-        ini
+        text
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::controls::Action;
     use crate::controls::Button;
     use crate::pad_map::PadInput;
 
@@ -548,7 +596,7 @@ mod tests {
         assert_eq!(s.ffb.strength, 50);
         assert_eq!(s.pad.stick_deadzone, 3000);
         assert!(s.game.free_play);
-        assert_eq!(Settings::from_ini(&Ini::default()), s);
+        assert_eq!(Settings::from_cfg(""), s);
     }
 
     #[test]
@@ -597,8 +645,10 @@ mod tests {
             },
             rom_dir: Some(PathBuf::from("/games/roms")),
         };
-        let text = s.to_ini().to_string();
-        assert_eq!(Settings::from_ini(&Ini::parse(&text)), s);
+        let text = s.to_cfg("");
+        assert_eq!(Settings::from_cfg(&text), s);
+        // saved again over itself: the same text
+        assert_eq!(s.to_cfg(&text), text);
     }
 
     #[test]
@@ -637,14 +687,30 @@ mod tests {
 
     #[test]
     fn bad_values_fall_back_or_clamp() {
-        let s = Settings::from_ini(&Ini::parse(
+        let s = Settings::from_cfg(
             "difficulty=99\nffb_strength=-5\naspect=round\nsteer_lock=275\nregion=moon\nrace_time=9x\n",
-        ));
+        );
         assert_eq!(s.game.difficulty, 16);
         assert_eq!(s.ffb.strength, 0);
         assert_eq!(s.aspect, Aspect::Original);
         assert_eq!(s.wheel.lock, SteeringLock::Degrees(270));
         assert_eq!(s.region, "radm");
         assert_eq!(s.race_time, RaceTime::Arcade);
+    }
+
+    #[test]
+    fn saving_keeps_the_players_lines_and_writes_keys_in_lower_case() {
+        let old = "# my notes\r\n[launcher]\r\nDifficulty=3\r\nmy_own_key=1\r\n";
+        let mut s = Settings::from_cfg(old);
+        assert_eq!(s.game.difficulty, 3);
+        s.game.difficulty = 5;
+        let text = s.to_cfg(old);
+        assert!(
+            text.starts_with("# my notes\r\n[launcher]\r\ndifficulty = 5\r\nmy_own_key=1\r\n"),
+            "{text}"
+        );
+        assert_eq!(Settings::from_cfg(&text), s);
+        // a region in any case
+        assert_eq!(Settings::from_cfg("region=RADMU").region, "radmu");
     }
 }

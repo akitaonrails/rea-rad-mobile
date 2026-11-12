@@ -7,7 +7,7 @@ pub mod bridge;
 pub mod controls;
 pub mod eeprom;
 pub mod ffb;
-pub mod ini;
+mod keys;
 pub mod mame;
 pub mod pad_map;
 pub mod rom;
