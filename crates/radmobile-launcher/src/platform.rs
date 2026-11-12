@@ -22,10 +22,13 @@ pub enum Run {
 /// double-click), so its output goes nowhere unless it attaches to the
 /// console of the terminal that started it (SDK study §5.2: `--list-devices`
 /// printed nothing on real Windows; Wine hid it). Output redirected to a
-/// file or pipe is kept. The menu doesn't attach. Nothing to do elsewhere.
+/// file or pipe is kept. The menu and `--play` don't attach. Nothing to
+/// do elsewhere.
 pub fn attach_console(run: Run) {
+    // Only for command runs: `--play` from a frontend's `start ""` batch
+    // file would keep that console window open behind the game.
     #[cfg(windows)]
-    if run != Run::Menu {
+    if run == Run::Command {
         rea_launcher_win32::console::attach_parent();
     }
     #[cfg(not(windows))]
@@ -60,4 +63,17 @@ pub fn single_instance(run: Run) -> Result<impl Sized, i32> {
         }
         second.exit_code()
     })
+}
+
+/// The single instance when no other launcher holds it, without telling
+/// anyone: for `--check-roms` and `--list-devices`, which only look, so
+/// they still answer while the game runs (they did in 0.5.0). Without the
+/// instance they must leave the running launcher's `launcher.log` alone.
+pub fn instance_if_free() -> Option<Box<dyn std::any::Any>> {
+    #[cfg(not(windows))]
+    let held = rea_launcher::instance::single(INSTANCE);
+    #[cfg(windows)]
+    let held = rea_launcher_win32::instance::single(INSTANCE);
+    held.ok()
+        .map(|guard| Box::new(guard) as Box<dyn std::any::Any>)
 }
