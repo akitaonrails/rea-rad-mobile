@@ -10,7 +10,7 @@ repository.workspace = true
 anyhow = "1.0.104"
 eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
 png = "0.18.1"
-radmobile-core = { version = "0.5.0", path = "../radmobile-core" }
+radmobile-core = { version = "0.6.0", path = "../radmobile-core" }
 rea-launcher.workspace = true
 rea-launcher-native.workspace = true
 

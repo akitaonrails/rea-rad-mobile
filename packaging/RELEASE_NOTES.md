@@ -1,14 +1,15 @@
 Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
 
-## Unreleased
+## Changes in 0.6.0
 
 - Logitech and Thrustmaster **gamepads** (a Logitech F310 or F710, say)
   are gamepads again: they were taken for a 900° steering wheel, so the
   stick steered far too sharply and the pad layout, the steering assist
   and menu navigation were lost.
 - A wheel that refuses force feedback is tried again every 5 seconds,
-  not hundreds of times a second (the log filled up), and gamepad rumble
-  is refreshed every 50 ms instead of every 4 ms.
+  not hundreds of times a second, and said once in the log; a wheel
+  without a motor is left alone. Gamepad rumble is refreshed every 50 ms
+  instead of every 4 ms.
 - With two gamepads connected (a Steam Deck's own controls and an
   external pad), the steering assist no longer fights itself.
 - `settings.ini` saved in Notepad as "ANSI" with an accented ROM folder
@@ -28,6 +29,13 @@ Rad Mobile launcher with a bundled, patched MAME 0.289 (Sega System 32 only).
   back up: it moves on after 10 seconds.
 - `RadMobile.exe` now carries its name, version and publisher (Windows'
   file properties).
+- If the launcher is closed or killed, MAME closes with it instead of
+  running on without controls.
+- `--check-roms` and `--list-devices` still answer while the game runs,
+  without touching the running game's `launcher.log`.
+- Under the hood: the wheel, pedal, wizard and force-feedback code now
+  comes from [rea-launcher-sdk](https://github.com/akitaonrails/rea-launcher-sdk)
+  v0.8.2, shared with future launchers.
 
 ## Changes in 0.5.0
 
