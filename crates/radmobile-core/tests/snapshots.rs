@@ -267,7 +267,7 @@ fn paths() -> Paths {
 /// The command line one argument per line, then the environment.
 fn command(s: &Settings, set: &str, screen: Option<Screen>) -> String {
     let mut out = String::new();
-    for a in mame::args(s, set, &paths(), screen) {
+    for a in mame::args_for(s, set, &paths(), screen, false) {
         writeln!(out, "{a}").unwrap();
     }
     out.push_str("--- env\n");
