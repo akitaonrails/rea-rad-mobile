@@ -102,6 +102,18 @@ fn path(p: &Path) -> String {
 
 /// The full MAME command line (without the executable).
 pub fn args(s: &Settings, set: &str, paths: &Paths, screen: Option<Screen>) -> Vec<String> {
+    args_for(s, set, paths, screen, cfg!(windows))
+}
+
+/// The full MAME command line for Linux (`windows == false`) or Windows
+/// (`windows == true`).
+pub fn args_for(
+    s: &Settings,
+    set: &str,
+    paths: &Paths,
+    screen: Option<Screen>,
+    windows: bool,
+) -> Vec<String> {
     let mut a: Vec<String> = vec![set.into()];
     let mut opt = |k: &str, v: String| {
         a.push(format!("-{k}"));
@@ -137,8 +149,14 @@ pub fn args(s: &Settings, set: &str, paths: &Paths, screen: Option<Screen>) -> V
         "brightness",
         format!("{:.2}", f32::from(s.brightness) / 100.0),
     );
-    // full volume is MAME's own default: leave the option out
-    if s.volume < 100 {
+    // On Windows, MAME 0.289's WASAPI backend produces silence for any
+    // negative `-volume` value (#1), so only mute (`volume == 0` -> `-sound
+    // none`) is passed on Windows; full volume is MAME's own default.
+    if windows {
+        if s.volume == 0 {
+            opt("sound", "none".into());
+        }
+    } else if s.volume < 100 {
         opt("volume", volume_db(s.volume).to_string());
     }
     opt("samplerate", "48000".into());
@@ -476,8 +494,29 @@ mod tests {
             ..Settings::default()
         };
         assert_eq!(
-            value(&args(&quieter, "radm", &paths(), None), "-volume"),
+            value(
+                &args_for(&quieter, "radm", &paths(), None, false),
+                "-volume"
+            ),
             Some("-6")
+        );
+        // On Windows, negative `-volume` silences MAME 0.289 WASAPI (#1):
+        // omit `-volume` for volume > 0 and mute via `-sound none` at 0.
+        assert_eq!(
+            value(&args_for(&quieter, "radm", &paths(), None, true), "-volume"),
+            None
+        );
+        assert_eq!(
+            value(&args_for(&quieter, "radm", &paths(), None, true), "-sound"),
+            None
+        );
+        let muted = Settings {
+            volume: 0,
+            ..Settings::default()
+        };
+        assert_eq!(
+            value(&args_for(&muted, "radm", &paths(), None, true), "-sound"),
+            Some("none")
         );
     }
 
