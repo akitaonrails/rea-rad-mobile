@@ -70,6 +70,8 @@ here=$(dirname "$(readlink -f "$0")")
 LD_LIBRARY_PATH="$here/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" exec "$here/radmobile-launcher" "$@"
 EOF
 	chmod +x "$out/RadMobile" "$out/radmobile-launcher" "$out/mame/radmobile"
+	cp "$root/packaging/appimage/radmobile-launcher.png" "$out/radmobile-launcher.png"
+	cp "$root/packaging/appimage/radmobile-launcher.desktop" "$out/radmobile-launcher.desktop"
 	tar -C "$root/dist/pkg" -czf "$root/dist/pkg/$name.tar.gz" "$name"
 	echo "package: $root/dist/pkg/$name.tar.gz"
 else

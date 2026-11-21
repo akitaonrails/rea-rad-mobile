@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Rad Mobile
+Comment=Launcher for Sega's Rad Mobile arcade racer
+Exec=RadMobile
+Icon=radmobile-launcher
+Terminal=false
+Categories=Game;ArcadeGame;

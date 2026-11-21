@@ -1,8 +1,6 @@
-//! The Windows executable's version information and manifest
-//! (rea-launcher-build): a named, versioned program instead of an
-//! anonymous one that antivirus heuristics distrust. No icon yet: the
-//! launcher has none of its own (the menu art comes from the player's ROM
-//! and is never shipped).
+//! The Windows executable's version information, icon and manifest
+//! (rea-launcher-build): a named, versioned program with the launcher's
+//! icon instead of an anonymous one that antivirus heuristics distrust.
 fn main() {
     rea_launcher_build::Resources::new(
         "Rad Mobile Launcher",
@@ -10,6 +8,7 @@ fn main() {
     )
     .company("AkitaOnRails")
     .file_name("RadMobile.exe")
+    .icon("../../packaging/appimage/radmobile-launcher.png")
     .embed()
     .unwrap();
 }
