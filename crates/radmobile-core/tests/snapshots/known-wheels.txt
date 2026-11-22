@@ -13,6 +13,7 @@
 044f:b696 "Thrustmaster T248" rotation 900 paddles Some((0, 1))
 044f:b684 "Thrustmaster T-GT" rotation 1080 paddles Some((0, 1))
 0eb7:0e03 "Fanatec CSL Elite" rotation 1080 paddles Some((0, 1))
+0eb7:0004 "Fanatec CSL DD (Compatibility)" rotation 1080 paddles Some((0, 1))
 0eb7:0005 "Fanatec CSL Elite (PS4)" rotation 1080 paddles Some((0, 1))
 0eb7:0020 "Fanatec CSL DD / GT DD Pro" rotation 1080 paddles Some((0, 1))
 346e:0005 "MOZA R3" rotation 900 paddles Some((13, 12))

@@ -14,6 +14,8 @@ code is in the SDK:
 | Known wheels, `classify`, spare interfaces, `pick_wheel`, `find_aux`, steering lock, curves, pedals, `WheelProfile<B>`, the wizard, pad maps | `rea_launcher::wheel` (pure) |
 | Synthetic force feedback from a `CarState`, the test pattern | `rea_launcher::ffb` (pure) |
 | Key repeat for list menus | `rea_launcher::pad::PadNav::with_repeat` |
+| DirectInput games: the devices behind the virtual wheel, the launcher's Wheel tab | `rea_launcher::wheel::rig`, `rea_launcher_win32::dinput`, `rea_launcher_ui::wheel` |
+| DirectInput games: the virtual wheel inside the game | `rea-launcher-dinput` (`rea_dinput.dll`) |
 | SDL devices, haptics, rumble; rescans; retries | `rea_launcher_native::sdl` (feature `sdl`), `rea_launcher_native::policy` |
 
 The launcher brings the game knowledge: its buttons (`impl Control`), the
@@ -196,3 +198,118 @@ launcher. What still helps:
 - **Wine/Proton FFB:** which winebus path carries it (SDL or hidraw) is
   game- and wheel-specific; record it in `RUNTIME_NOTES.md`.
   `wine::SDL_ONLY` has not been verified with a wheel.
+
+## DirectInput games: the launcher's side
+
+For CMR3, CMR04 and CMR2005 an in-game layer shows the game one virtual
+wheel made from the player's wheel and pedals (`rea_wheel.ini`, the
+contract in `rea_launcher::wheel::dinput`). This part is what the
+launcher does; the layer itself has its own part.
+
+- **One set of rules on both sides.** `wheel::rig` decides which wheel
+  and pedals drive (`pick`: `pick_wheel` among the wheels and the device
+  picked by hand, the pedals picked by hand, else the calibrated `aux_*`
+  device, else on the wheel), how they are read (`profile`: the saved
+  calibration for that wheel model, else a guess from where the axes
+  rest), what the game gets (`virtual_controls`: `Profile::read` with the
+  lock, then `shape` with the deadzone and curve) and whether the layer
+  shows the wheel at all (`shows_virtual_wheel`). The tab's live check
+  and the layer call the same functions, so the check is the game.
+- **Reading devices.** `rea_launcher_win32::dinput::DirectInput` lists
+  `DI8DEVCLASS_GAMECTRL` devices (spare HID interfaces left out), keys
+  each by its instance GUID (`rig::guid_text`, lower case with braces)
+  and reads `DIJOYSTATE2`'s eight axes in `dinput::REAL_AXES` order with
+  `DIPROP_RANGE` = `REAL_RANGE`, non-exclusive, in the background, on a
+  worker thread: the window only copies results. The kind comes from
+  `classify` with `DI8DEVTYPE_DRIVING` as the wheel type and
+  `DI8DEVTYPE_GAMEPAD` as a pad; USB ids from `guidProduct` ("PIDVID").
+- **Hot-plug.** While the tab reads devices the worker rescans every 2 s;
+  "Look for devices again" rescans now. Devices still attached stay open.
+- **Force-feedback test.** `ffb::test_pattern` as a constant force on X,
+  from the west (positive pushes right, as the SDL path), at the player's
+  strength and direction. Exclusive access needs a top-level window: the
+  worker makes a hidden one of its own, so the launcher passes no window
+  handle. Autocentre is turned off for the test and back on after.
+- **Options and files.** The settings are launcher options
+  (`wheel::dinput::options`: window, flag and `launcher.cfg` key alike),
+  starting from the launcher's own `Setup` (the CMR rally games default to
+  540°). The calibration lives in a `rea_wheel.ini` in the launcher's
+  config folder. At each start the launcher decides with
+  `rig::shows_virtual_wheel` over `dinput::list()` (one-shot, no worker)
+  and writes the layer's `rea_wheel.ini` next to its DLL with
+  `rig::save("", &setup, profile, HEADER)`.
+- **Calibration.** The tab runs the SDK wizard (accelerator, brake) over
+  the wheel and every other non-pad device, then `rig::calibrate` saves
+  the profile and points `pedals` at the device the pedals were found on.
+- **Wine** has no wheel in tests: the module's tests run under
+  `scripts/wine-test` with zero devices (list, a refused test, a clean
+  stop); the tab's tests use `rig::Fixed`.
+- **Unverified on hardware:** the force direction through DirectInput
+  (taken from SDL's DirectInput backend), exclusive background access on
+  every driver, and whether Wine's instance GUIDs stay the same across
+  replugging. Phase 3 of the wheel plan checks them.
+
+## DirectInput games (the game reads the wheel itself): the layer
+
+`rea-launcher-dinput` (crate README for the details) is the in-game half:
+`rea_dinput.dll` in the runtime copy's import table
+(`rea_dinput::import_into`) wraps the game's `DirectInput8Create`, in
+front of Xidi or the system's DirectInput, and shows the game one
+virtual wheel ("rea wheel", 1209:5245, the frozen layout of
+`wheel::dinput::VIRTUAL`). What we learnt building it:
+
+- **One device per player.** The CMR games bind one controller: a wheel
+  base and a pedal box on its own USB can only drive together as one
+  merged device. The layer hides what it merged (the wheel, the pedals,
+  the wheel's Fanatec twin collection, spare interfaces), so slots in the
+  game's own list don't change meaning.
+- **Same choices as the tab.** The layer calls `rig::pick`,
+  `rig::profile` and `rig::virtual_controls` over the devices it lists
+  (spare interfaces left out, as the launcher lists them), and reads them
+  at `REAL_AXES`/`REAL_RANGE`, so the calibration means the same.
+  `auto` is not decided twice: the launcher passes its
+  `shows_virtual_wheel` decision as `REA_WHEEL_MODE=on|off`.
+- **The game's units.** CMR sets every axis to 0..255 by object ID;
+  any `DIPROP_RANGE` (device, offset, ID, usage), deadzone and saturation
+  work. A centred axis rests at 127 of 0..255 (the lower of the two
+  middle values; CMR04 reads 128 as one step right). The game's data
+  format is translated the way DirectInput maps one, not assumed to be
+  `c_dfDIJoystick2`.
+- **Force feedback.** Effects become one-axis effects on the wheel's X
+  (the X share of the game's direction, × strength, flipped on invert;
+  conditions keep their own X coefficients). `DIPROP_FFGAIN` must answer
+  (CMR04 makes no effects otherwise). A refused `DIEP_NORESTART` update is
+  sent again without it. When the wheel is acquired again its effects are
+  made, downloaded and restarted, and forever-effects the firmware
+  stopped are restarted every 250 ms: the game never knows the driver
+  dropped them (Wanszai's revive).
+- **Calibration without the launcher.** Uncalibrated pedals are guessed
+  from where the axes rest during the first second the game reads the
+  wheel (a device's first reading after acquire can be all zeros).
+- **Building it.** The DLL crates as dependencies with
+  `default-features = false`, a launcher feature `layer-dlls =
+  ["rea-launcher-close-hook/dll", "rea-launcher-dinput/dll"]`, and a
+  workspace `[profile.dll]` (`inherits = "release"`, `panic = "unwind"`):
+  `cargo build --profile dll --lib -p <launcher> -p
+  rea-launcher-close-hook -p rea-launcher-dinput --features layer-dlls
+  --target i686-pc-windows-gnu`, DLLs in `target/<triple>/dll/`. With a
+  launcher's `panic = "abort"` the layer's own panic guards can't work
+  and any panic ends the game (`launcher-check` rule `dll-unwind`; the
+  close hook has no guard, so the rule doesn't ask it).
+- **Games with an ASI loader that checks the exe** (SilentPatch, CMR3):
+  it refuses an exe whose import table changed, so ship the DLL renamed
+  `rea_dinput.asi` instead of `import_into` and leave the exe untouched.
+  The loader must run before the game's `DirectInput8Create`; the layer
+  patches the already-bound import from its `DllMain` either way.
+- **Strength** scales each effect; the wheel gets the game's own gain
+  (a driver may take a gain and ignore it). The wheel's autocentre
+  can't be scaled: the seeds turn it off in the car, the vendor software
+  sets it for menus.
+- **Testing.** `fake = wheel` / `wheel+pedals` in `rea_wheel.ini`
+  (test-only) adds devices the layer opens, reads and gives force
+  feedback to like real ones; the stand-in game drives them through the
+  `rea_dinput_fake_*` exports and checks what reached them, also behind
+  a stand-in `dinput8.dll` in Xidi's place, under `scripts/wine-test`.
+- **Unverified on hardware:** force direction and feel per wheel family,
+  exclusive background acquisition on each driver and Wine backend, and
+  spring/damper support per wheel. Phase 3 of the wheel plan.

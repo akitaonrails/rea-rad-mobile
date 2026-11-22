@@ -220,7 +220,10 @@ that: if a step could be done by the launcher, the launcher does it.
   emulator from a pinned commit, patched by one regenerated patch file,
   with a corresponding-source archive for GPL code. The emulator dies with
   the launcher: start it with `rea_launcher_native::child::spawn_tied`
-  (Screamer doesn't yet; a killed launcher orphans DOSBox). An arcade
+  (Screamer doesn't yet; a killed launcher orphans DOSBox), or, when a run
+  is several processes in gamescope (the TeknoParrot hubs), with
+  `group::Group` and `supervise::run` (feature `group`): tied, tagged,
+  stopped politely, nothing left. An arcade
   game on MAME follows `docs/playbooks/arcade-mame.md`. A game with a
   native Linux port (DiRT Rally) follows the native-Linux recipe in
   `docs/playbooks/new-launcher.md` ("Patterns").
@@ -360,15 +363,24 @@ these rules are firm:
   `THIRD_PARTY.md` (file, author, licence, source URL), and show the credit
   in the window when the licence asks for attribution. Resize to what the
   window needs (JPEG, a few hundred KB at most).
-- **Two sanctioned looks.** The SDK window (`rea-launcher-ui`) for most
-  launchers, and the **arcade list menu** of an emulator wrapper
+- **Three sanctioned looks.** The SDK window (`rea-launcher-ui`) for most
+  launchers; the **arcade list menu** of an emulator wrapper
   (rea-rad-mobile, after Wanszai's front ends): full screen, pad first,
-  one list of rows with `◀ value ▶`. The rules below apply to both
+  one list of rows with `◀ value ▶`; and the **hub**
+  (`rea_launcher_ui::hub`) of a launcher for a series of arcade games
+  (the TeknoParrot launchers): full screen, pad first, a hero picture and
+  a row of game tiles, laid out for 720 lines and zoomed to the window,
+  settings rows `◀ value ▶` from the option table. A hub launcher brings
+  its colours (`HubTheme`, with its `contrast_problems` test), its brand
+  shield and title, its art and its words; the layout, fonts (embedded
+  Barlow) and behaviour are the SDK's. The rules below apply to all three
   (contrast test, 13/11 pt, a focus ring, mouse, keyboard and pad). Until
   the list menu exists in `rea-launcher-ui`, its launcher meets the
   `egui_kittest` rule by testing the menu model on the host (its items,
   actions and values, option by option); that is a waiver the owner
-  records in `.rea-check-waivers`, never a silent gap.
+  records in `.rea-check-waivers`, never a silent gap. A hub launcher
+  tests its window with `hub::testing` (every control fits at 1280×720
+  and 1280×800, pad navigation, golden AccessKit dumps).
 - **Accessibility comes first.**
   - Text and controls meet WCAG AA contrast; each launcher keeps a test of
     its palette (`Palette::contrast_problems`).

@@ -190,6 +190,23 @@ program for the Windows build.
 - Pads in the window: `rea_launcher_ui::pad::joystick::Joysticks` feeding
   `PadNav` (`/dev/input/js*`).
 
+**A series of arcade games in one launcher** (the TeknoParrot launchers:
+Initial D, Nintendo, Sega, Wangan). Use the hub look rather than a
+settings window per game: `rea_launcher_ui::hub::run` over the launcher's
+`HubBackend` (crates/rea-launcher-ui/README.md, "The hub").
+- The launcher keeps the game knowledge: its catalog as `HubGame`s and a
+  `Support` per host, its scan, its option table (`cfg::spec`, one table
+  for the rows, `--help` and the settings files), the session it prepares
+  (supervised by `rea_launcher_native::supervise`), its controls view.
+- Paths besides the library (a BIOS file or folder) are `PathField`s:
+  one row each on the setup page, a `launcher.cfg` key with its old names,
+  a flag in `rea_launcher::hub::cli`.
+- Folders: `HubPaths::discover(&HubDirs { env_prefix, name, dev_assets })`.
+- Before the window: `hub::cli::parse`, `instance::single`, and
+  `rea_launcher_ui::hub::fatal` for anything refused.
+- Tests: `hub::testing` (fits at 1280×720 and 1280×800, pad, close →
+  stop, golden `dump`s).
+
 **Old native Linux ports** (2015–2018 Feral/Aspyr builds, DiRT Rally).
 - Zen 3+ CPUs with protection keys fault on execute-only mappings: a small
   `LD_PRELOAD` library that adds read to exec-only `mmap`/`mprotect`
@@ -237,7 +254,9 @@ and crashed while `--check` said ready (rea-colin-mcrae#6). So:
   without `REA_CLOSE_HOOK_ATTACH`) and set
   `rea_close_hook::registry::ENV` to the rule, built and checked with
   `registry::Config` (`FROM -> TO`; `walk FROM -> TO` for a game that walks
-  down from `SOFTWARE`).
+  down from `SOFTWARE`). Build the DLL with the workspace's `[profile.dll]`
+  (`panic = "unwind"`) and `--profile dll`, never the launcher's release
+  profile (the crate README's recipe; `launcher-check` rule `dll-unwind`).
 - Read back: `write_verified` returns every value that differs. Play stops
   with that list and the issue link; `--check` fails loudly when the DLL is
   missing, the runtime exe doesn't import it, the rules don't parse or the

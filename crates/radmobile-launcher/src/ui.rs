@@ -591,6 +591,16 @@ impl App {
         if let Err(why) = result {
             crate::log::line(&why);
             self.say(why, BAD);
+        } else {
+            // Also mirror to the shared wheel.ini so other rea launchers on
+            // this machine pick up the wizard's calibration automatically.
+            #[cfg(not(test))]
+            if self.profile.is_some() {
+                let shared = rea_launcher::hub::HubPaths::shared_wheel_file();
+                if shared != path {
+                    let _ = store::save_profile(&shared, self.profile.as_ref());
+                }
+            }
         }
         self.save();
     }
